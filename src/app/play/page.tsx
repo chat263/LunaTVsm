@@ -2128,14 +2128,15 @@ function PlayPageClient() {
             const hls = new Hls({
               debug: false,
               enableWorker: true,
-              lowLatencyMode: !isMobile, // 移动设备关闭低延迟模式以节省资源
+              lowLatencyMode: false,// !isMobile, // 移动设备关闭低延迟模式以节省资源
 
               /* 缓冲/内存相关 - 移动设备优化 */
-              maxBufferLength: isMobile ? (isIOS ? 8 : 12) : 30, // iOS更保守的缓冲
-              backBufferLength: isMobile ? (isIOS ? 5 : 8) : 30, // 减少已播放内容缓存
+              maxBufferLength: isMobile ? (isIOS ? 8 : 12) : 600, // iOS更保守的缓冲
+              maxMaxBufferLength: 3000,
+              backBufferLength: isMobile ? (isIOS ? 5 : 8) : 300, // 减少已播放内容缓存
               maxBufferSize: isMobile 
                 ? (isIOS ? 15 * 1000 * 1000 : 25 * 1000 * 1000) // iOS: 15MB, Android: 25MB
-                : 60 * 1000 * 1000, // 桌面: 60MB
+                : 600 * 1000 * 1000, // 桌面: 60MB
 
               /* 网络优化 */
               maxLoadingDelay: isMobile ? 2 : 4, // 移动设备更快的加载超时
