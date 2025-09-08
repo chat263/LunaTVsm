@@ -51,3 +51,4 @@ public/workbox-e9849328.js
 .gitignore
 public/sw.js
 project.zip
+project.z*
