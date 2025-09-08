@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
+export const dynamic = 'force-dynamic';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

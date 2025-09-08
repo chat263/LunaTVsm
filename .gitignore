@@ -43,3 +43,10 @@ sitemap-*.xml
 # generated files
 src/lib/runtime.ts
 public/manifest.json
+config.json
+cube
+xy
+.idx/dev.nix
+public/workbox-e9849328.js
+.gitignore
+public/sw.js

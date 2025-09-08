@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import { refreshLiveChannels } from '@/lib/live';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
