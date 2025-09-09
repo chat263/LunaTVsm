@@ -47,8 +47,10 @@ config.json
 cube
 xy
 .idx/dev.nix
-public/workbox-e9849328.js
+public/workbox-*.js
 .gitignore
 public/sw.js
 project.zip
 project.z*
+pnpm-lock.yaml
+.gitignore
