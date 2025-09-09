@@ -9,7 +9,7 @@ declare module '@/lib/artplayer-plugin-chromecast' {
     onCastStart?: () => void;
     onError?: (error: Error) => void;
   }
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
   interface ChromecastPlugin {
     name: 'artplayerPluginChromecast';
     getCastState: () => any;
