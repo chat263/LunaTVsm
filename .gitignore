@@ -54,3 +54,4 @@ project.zip
 project.z*
 pnpm-lock.yaml
 .gitignore
+*.zip
