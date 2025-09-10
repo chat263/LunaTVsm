@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "npm run gen:manifest && next dev -H 0.0.0.0",
     "build": "npm run gen:manifest && next build",
+    "buildnext": "next build",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "eslint src --fix && npm run format",
