@@ -377,7 +377,7 @@ export abstract class BaseRedisStorage implements IStorage {
   }
 
   // ---------- Cache ----------
-  private cacheKey(key: string) { return `cache:${key}`; }
+  private cacheKey(key: string) { return `cache:${encodeURIComponent(key)}`; }
 
   async getCache(key: string): Promise<any | null> {
     const val = await this.withRetry(() => this.client.get(this.cacheKey(key)));
