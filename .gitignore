@@ -55,3 +55,4 @@ project.z*
 pnpm-lock.yaml
 .gitignore
 *.zip
+package-lock.json
