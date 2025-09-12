@@ -57,3 +57,4 @@ pnpm-lock.yaml
 *.zip
 package-lock.json
 f.js
+docker
