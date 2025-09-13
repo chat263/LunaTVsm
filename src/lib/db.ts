@@ -17,6 +17,13 @@ const STORAGE_TYPE =
 
 // 创建存储实例
 function createStorage(): IStorage {
+  if (process.env.NEXT_PUBLIC_STORAGE_TYPE === 'upstash') {
+    const upstashUrl = process.env.UPSTASH_URL;
+    const upstashToken = process.env.UPSTASH_TOKEN;
+    if (!upstashUrl || !upstashToken) {
+      return new RedisStorage();
+    }
+  }
   switch (STORAGE_TYPE) {
     case 'redis':
       return new RedisStorage();
