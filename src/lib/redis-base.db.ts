@@ -98,7 +98,7 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
       socket: {
         host,
         port: Number(port),
-        tls: protocol === 'rediss' ? {} : undefined, // ✅ 必须是 {} 或 true
+        tls: protocol === 'rediss' ? true : {}, // ✅ 必须是 {} 或 true
         reconnectStrategy: (retries: number) => {
           console.log(`${config.clientName} reconnection attempt ${retries + 1}`);
           if (retries > 10) return false;
