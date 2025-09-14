@@ -88,66 +88,34 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
       throw new Error(`${config.clientName}_URL env variable not set`);
     }
 
-    let rurl, rpwd, rname;
-    try {
-      // 匹配格式: protocol://user:password@host:port
-      const regex = /^(rediss?):\/\/(?:([^:]+):([^@]+)@)?([^:]+):(\d+)$/;
-      const match = config.url.match(regex);
+    const regex = /^(rediss?):\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/;
+    const match = config.url.match(regex);
+    if (!match) throw new Error('Invalid Redis URL format');
 
-      if (!match) {
-        throw new Error('Invalid Redis URL format');
-      }
+    const [, protocol, username, password, host, port] = match;
 
-      const [, protocol, username, password, host, port] = match;
-
-      rurl = `${protocol}://${host}:${port}`;
-      rpwd = password || '';
-      rname = username || 'default';
-
-    } catch (error: any) {
-      throw new Error(`Failed to parse Redis URL: ${error.message}`);
-    }
-
-    // 创建客户端配置
     const clientConfig: any = {
-      url: rurl,
-      password: rpwd,
-      username: rname,
-      tls: {
-        rejectUnauthorized: false,
-      },
       socket: {
+        host,
+        port: Number(port),
+        tls: protocol === 'rediss' ? {} : undefined, // ✅ 必须是 {} 或 true
         reconnectStrategy: (retries: number) => {
           console.log(`${config.clientName} reconnection attempt ${retries + 1}`);
-          if (retries > 10) {
-            console.error(`${config.clientName} max reconnection attempts exceeded`);
-            return false; // 停止重连
-          }
-          return Math.min(1000 * Math.pow(2, retries), 30000); // 指数退避，最大30秒
+          if (retries > 10) return false;
+          return Math.min(1000 * Math.pow(2, retries), 30000);
         },
         connectTimeout: 10000,
         noDelay: true,
       },
+      username,
+      password,
       pingInterval: 30000,
     };
 
     client = createClient(clientConfig);
 
-    client.on('error', (err) => {
-      console.error(`${config.clientName} client error:`, err);
-    });
-
-    client.on('connect', () => {
-      console.log(`${config.clientName} connected`);
-    });
-
-    client.on('reconnecting', () => {
-      console.log(`${config.clientName} reconnecting...`);
-    });
-
-    client.on('ready', () => {
-      console.log(`${config.clientName} ready`);
-    });
+    client.on('error', (err) => console.error(`${config.clientName} error:`, err));
+    client.on('ready', () => console.log(`${config.clientName} ready`));
 
     const connectWithRetry = async () => {
       try {
@@ -155,11 +123,9 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
         console.log(`${config.clientName} connected successfully`);
       } catch (err) {
         console.error(`${config.clientName} initial connection failed:`, err);
-        console.log('Will retry in 5 seconds...');
         setTimeout(connectWithRetry, 5000);
       }
     };
-
     connectWithRetry();
 
     (global as any)[globalSymbol] = client;
