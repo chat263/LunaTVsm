@@ -476,8 +476,10 @@ export abstract class BaseRedisStorage implements IStorage {
     }
   }
 
-  // ---------- Cache ----------
-  private cacheKey(key: string) { return `cache:${encodeURIComponent(key)}`; }
+  // ---------- 通用缓存方法 ----------
+  private cacheKey(key: string) {
+    return `cache:${key}`;
+  }
 
 
   async getCache(key: string): Promise<any | null> {
