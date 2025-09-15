@@ -98,8 +98,11 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
         // 重连策略：指数退避，最大30秒
         reconnectStrategy: (retries: number) => {
           console.log(`${config.clientName} reconnection attempt ${retries + 1}`);
-          if (retries > 10) return false;
-          return Math.min(1000 * Math.pow(2, retries), 30000);
+          if (retries > 10) {
+            console.error(`${config.clientName} max reconnection attempts exceeded`);
+            return false; // 停止重连
+          }
+          return Math.min(1000 * Math.pow(2, retries), 30000); // 指数退避，最大30秒
         },
         connectTimeout: 10000, // 10秒连接超时
         // 设置no delay，减少延迟
@@ -137,9 +140,11 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
         console.log(`${config.clientName} connected successfully`);
       } catch (err) {
         console.error(`${config.clientName} initial connection failed:`, err);
+        console.log('Will retry in 5 seconds...');
         setTimeout(connectWithRetry, 5000);
       }
     };
+
     connectWithRetry();
 
     (global as any)[globalSymbol] = client;
