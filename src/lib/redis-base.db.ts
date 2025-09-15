@@ -1,6 +1,6 @@
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
+
 import { createClient, RedisClientType } from 'redis';
-import "server-only";
 
 import { AdminConfig } from './admin.types';
 import {
@@ -88,44 +88,60 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
       throw new Error(`${config.clientName}_URL env variable not set`);
     }
 
-    const regex = /^(rediss?):\/\/([^:]+):([^@]+)@([^:]+):(\d+)$/;
-    const match = config.url.match(regex);
-    if (!match) throw new Error('Invalid Redis URL format');
-
-    const [, protocol, username, password, host, port] = match;
-
+    // 创建客户端配置
     const clientConfig: any = {
+      url: config.url,
       socket: {
-        host,
-        port: Number(port),
-        tls: protocol === 'rediss' ? true : {}, // ✅ 必须是 {} 或 true
+        tls: true,
+        rejectUnauthorized: false, // 开启证书验证
+        // 重连策略：指数退避，最大30秒
         reconnectStrategy: (retries: number) => {
           console.log(`${config.clientName} reconnection attempt ${retries + 1}`);
-          if (retries > 10) return false;
-          return Math.min(1000 * Math.pow(2, retries), 30000);
+          if (retries > 10) {
+            console.error(`${config.clientName} max reconnection attempts exceeded`);
+            return false; // 停止重连
+          }
+          return Math.min(1000 * Math.pow(2, retries), 30000); // 指数退避，最大30秒
         },
-        connectTimeout: 10000,
+        connectTimeout: 10000, // 10秒连接超时
+        // 设置no delay，减少延迟
         noDelay: true,
       },
-      username,
-      password,
-      pingInterval: 30000,
+      // 添加其他配置
+      pingInterval: 30000, // 30秒ping一次，保持连接活跃
     };
 
     client = createClient(clientConfig);
 
-    client.on('error', (err) => console.error(`${config.clientName} error:`, err));
-    client.on('ready', () => console.log(`${config.clientName} ready`));
+    // 添加错误事件监听
+    client.on('error', (err) => {
+      console.error(`${config.clientName} client error:`, err);
+    });
 
+    client.on('connect', () => {
+      console.log(`${config.clientName} connected`);
+    });
+
+    client.on('reconnecting', () => {
+      console.log(`${config.clientName} reconnecting...`);
+    });
+
+    client.on('ready', () => {
+      console.log(`${config.clientName} ready`);
+    });
+
+    // 初始连接，带重试机制
     const connectWithRetry = async () => {
       try {
         await client!.connect();
         console.log(`${config.clientName} connected successfully`);
       } catch (err) {
         console.error(`${config.clientName} initial connection failed:`, err);
+        console.log('Will retry in 5 seconds...');
         setTimeout(connectWithRetry, 5000);
       }
     };
+
     connectWithRetry();
 
     (global as any)[globalSymbol] = client;
@@ -134,215 +150,325 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
   return client;
 }
 
-// ---------- 抽象基类 ----------
+// 抽象基类，包含所有通用的Redis操作逻辑
 export abstract class BaseRedisStorage implements IStorage {
   protected client: RedisClientType;
+  protected config: RedisConnectionConfig;
   protected withRetry: <T>(operation: () => Promise<T>, maxRetries?: number) => Promise<T>;
 
   constructor(config: RedisConnectionConfig, globalSymbol: symbol) {
+    this.config = config; // 保存配置
     this.client = createRedisClient(config, globalSymbol);
     this.withRetry = createRetryWrapper(config.clientName, () => this.client);
   }
 
-  // ---------- 辅助方法 ----------
-  private prKey(user: string, key: string) { return `u:${user}:pr:${key}`; }
-  private favKey(user: string, key: string) { return `u:${user}:fav:${key}`; }
-  private shKey(user: string) { return `u:${user}:sh`; }
-  private userPwdKey(user: string) { return `u:${user}:pwd`; }
-  private skipConfigKey(user: string, source: string, id: string) { return `u:${user}:skip:${source}+${id}`; }
-  private adminConfigKey() { return 'admin:config'; }
+  // ---------- 播放记录 ----------
+  private prKey(user: string, key: string) {
+    return `u:${user}:pr:${key}`; // u:username:pr:source+id
+  }
 
-  // ---------- 索引管理 ----------
-  private prIndexKey(user: string) { return `u:${user}:pr_index`; }
-  private favIndexKey(user: string) { return `u:${user}:fav_index`; }
-  private skipIndexKey(user: string) { return `u:${user}:skip_index`; }
-  private userIndexKey() { return 'users_index'; }
-  private cacheIndexKey() { return 'cache_index'; }
-
-  // ---------- PlayRecord ----------
-  async getPlayRecord(userName: string, key: string): Promise<PlayRecord | null> {
-    const val = await this.withRetry(() => this.client.get(this.prKey(userName, key)));
+  async getPlayRecord(
+    userName: string,
+    key: string
+  ): Promise<PlayRecord | null> {
+    const val = await this.withRetry(() =>
+      this.client.get(this.prKey(userName, key))
+    );
     return val ? (JSON.parse(val) as PlayRecord) : null;
   }
 
-  async setPlayRecord(userName: string, key: string, record: PlayRecord): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.set(this.prKey(userName, key), JSON.stringify(record));
-      await this.client.sAdd(this.prIndexKey(userName), key);
-    });
+  async setPlayRecord(
+    userName: string,
+    key: string,
+    record: PlayRecord
+  ): Promise<void> {
+    await this.withRetry(() =>
+      this.client.set(this.prKey(userName, key), JSON.stringify(record))
+    );
   }
 
-  async getAllPlayRecords(userName: string): Promise<Record<string, PlayRecord>> {
-    const keys: string[] = await this.withRetry(() => this.client.sMembers(this.prIndexKey(userName)));
+  async getAllPlayRecords(
+    userName: string
+  ): Promise<Record<string, PlayRecord>> {
+    const pattern = `u:${userName}:pr:*`;
+    const keys: string[] = await this.withRetry(() => this.client.keys(pattern));
+    if (keys.length === 0) return {};
+    const values = await this.withRetry(() => this.client.mGet(keys));
     const result: Record<string, PlayRecord> = {};
-    for (const k of keys) {
-      const val = await this.withRetry(() => this.client.get(this.prKey(userName, k)));
-      if (val) result[k] = JSON.parse(val) as PlayRecord;
-    }
+    keys.forEach((fullKey: string, idx: number) => {
+      const raw = values[idx];
+      if (raw) {
+        const rec = JSON.parse(raw) as PlayRecord;
+        // 截取 source+id 部分
+        const keyPart = ensureString(fullKey.replace(`u:${userName}:pr:`, ''));
+        result[keyPart] = rec;
+      }
+    });
     return result;
   }
 
   async deletePlayRecord(userName: string, key: string): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.del(this.prKey(userName, key));
-      await this.client.sRem(this.prIndexKey(userName), key);
-    });
+    await this.withRetry(() => this.client.del(this.prKey(userName, key)));
   }
 
-  // ---------- Favorite ----------
+  // ---------- 收藏 ----------
+  private favKey(user: string, key: string) {
+    return `u:${user}:fav:${key}`;
+  }
+
   async getFavorite(userName: string, key: string): Promise<Favorite | null> {
-    const val = await this.withRetry(() => this.client.get(this.favKey(userName, key)));
+    const val = await this.withRetry(() =>
+      this.client.get(this.favKey(userName, key))
+    );
     return val ? (JSON.parse(val) as Favorite) : null;
   }
 
-  async setFavorite(userName: string, key: string, favorite: Favorite): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.set(this.favKey(userName, key), JSON.stringify(favorite));
-      await this.client.sAdd(this.favIndexKey(userName), key);
-    });
+  async setFavorite(
+    userName: string,
+    key: string,
+    favorite: Favorite
+  ): Promise<void> {
+    await this.withRetry(() =>
+      this.client.set(this.favKey(userName, key), JSON.stringify(favorite))
+    );
   }
 
   async getAllFavorites(userName: string): Promise<Record<string, Favorite>> {
-    const keys: string[] = await this.withRetry(() => this.client.sMembers(this.favIndexKey(userName)));
+    const pattern = `u:${userName}:fav:*`;
+    const keys: string[] = await this.withRetry(() => this.client.keys(pattern));
+    if (keys.length === 0) return {};
+    const values = await this.withRetry(() => this.client.mGet(keys));
     const result: Record<string, Favorite> = {};
-    for (const k of keys) {
-      const val = await this.withRetry(() => this.client.get(this.favKey(userName, k)));
-      if (val) result[k] = JSON.parse(val) as Favorite;
-    }
+    keys.forEach((fullKey: string, idx: number) => {
+      const raw = values[idx];
+      if (raw) {
+        const fav = JSON.parse(raw) as Favorite;
+        const keyPart = ensureString(fullKey.replace(`u:${userName}:fav:`, ''));
+        result[keyPart] = fav;
+      }
+    });
     return result;
   }
 
   async deleteFavorite(userName: string, key: string): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.del(this.favKey(userName, key));
-      await this.client.sRem(this.favIndexKey(userName), key);
-    });
+    await this.withRetry(() => this.client.del(this.favKey(userName, key)));
   }
 
-  // ---------- User ----------
+  // ---------- 用户注册 / 登录 ----------
+  private userPwdKey(user: string) {
+    return `u:${user}:pwd`;
+  }
+
   async registerUser(userName: string, password: string): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.set(this.userPwdKey(userName), password);
-      await this.client.sAdd(this.userIndexKey(), userName);
-    });
+    // 简单存储明文密码，生产环境应加密
+    await this.withRetry(() => this.client.set(this.userPwdKey(userName), password));
   }
 
   async verifyUser(userName: string, password: string): Promise<boolean> {
-    const stored = await this.withRetry(() => this.client.get(this.userPwdKey(userName)));
+    const stored = await this.withRetry(() =>
+      this.client.get(this.userPwdKey(userName))
+    );
     if (stored === null) return false;
+    // 确保比较时都是字符串类型
     return ensureString(stored) === password;
   }
 
+  // 检查用户是否存在
   async checkUserExist(userName: string): Promise<boolean> {
-    const exists = await this.withRetry(() => this.client.exists(this.userPwdKey(userName)));
+    // 使用 EXISTS 判断 key 是否存在
+    const exists = await this.withRetry(() =>
+      this.client.exists(this.userPwdKey(userName))
+    );
     return exists === 1;
   }
 
+  // 修改用户密码
   async changePassword(userName: string, newPassword: string): Promise<void> {
-    await this.withRetry(() => this.client.set(this.userPwdKey(userName), newPassword));
+    // 简单存储明文密码，生产环境应加密
+    await this.withRetry(() =>
+      this.client.set(this.userPwdKey(userName), newPassword)
+    );
   }
 
+  // 删除用户及其所有数据
   async deleteUser(userName: string): Promise<void> {
-    // 删除密码及索引
-    await this.withRetry(async () => {
-      await this.client.del(this.userPwdKey(userName));
-      await this.client.sRem(this.userIndexKey(), userName);
-    });
+    // 删除用户密码
+    await this.withRetry(() => this.client.del(this.userPwdKey(userName)));
 
     // 删除搜索历史
     await this.withRetry(() => this.client.del(this.shKey(userName)));
 
     // 删除播放记录
-    const prKeys = await this.withRetry(() => this.client.sMembers(this.prIndexKey(userName)));
-    for (const k of prKeys) await this.withRetry(() => this.client.del(this.prKey(userName, k)));
-    await this.withRetry(() => this.client.del(this.prIndexKey(userName)));
-
-    // 删除收藏
-    const favKeys = await this.withRetry(() => this.client.sMembers(this.favIndexKey(userName)));
-    for (const k of favKeys) await this.withRetry(() => this.client.del(this.favKey(userName, k)));
-    await this.withRetry(() => this.client.del(this.favIndexKey(userName)));
-
-    // 删除跳过配置
-    const skipKeys = await this.withRetry(() => this.client.sMembers(this.skipIndexKey(userName)));
-    for (const k of skipKeys) {
-      const [source, id] = k.split('+');
-      await this.withRetry(() => this.client.del(this.skipConfigKey(userName, source, id)));
+    const playRecordPattern = `u:${userName}:pr:*`;
+    const playRecordKeys = await this.withRetry(() =>
+      this.client.keys(playRecordPattern)
+    );
+    if (playRecordKeys.length > 0) {
+      await this.withRetry(() => this.client.del(playRecordKeys));
     }
-    await this.withRetry(() => this.client.del(this.skipIndexKey(userName)));
+
+    // 删除收藏夹
+    const favoritePattern = `u:${userName}:fav:*`;
+    const favoriteKeys = await this.withRetry(() =>
+      this.client.keys(favoritePattern)
+    );
+    if (favoriteKeys.length > 0) {
+      await this.withRetry(() => this.client.del(favoriteKeys));
+    }
+
+    // 删除跳过片头片尾配置
+    const skipConfigPattern = `u:${userName}:skip:*`;
+    const skipConfigKeys = await this.withRetry(() =>
+      this.client.keys(skipConfigPattern)
+    );
+    if (skipConfigKeys.length > 0) {
+      await this.withRetry(() => this.client.del(skipConfigKeys));
+    }
   }
 
-  async getAllUsers(): Promise<string[]> {
-    return await this.withRetry(() => this.client.sMembers(this.userIndexKey()));
+  // ---------- 搜索历史 ----------
+  private shKey(user: string) {
+    return `u:${user}:sh`; // u:username:sh
   }
 
-  // ---------- Search History ----------
   async getSearchHistory(userName: string): Promise<string[]> {
-    const result = await this.withRetry(() => this.client.lRange(this.shKey(userName), 0, -1));
+    const result = await this.withRetry(() =>
+      this.client.lRange(this.shKey(userName), 0, -1)
+    );
+    // 确保返回的都是字符串类型
     return ensureStringArray(result as any[]);
   }
 
   async addSearchHistory(userName: string, keyword: string): Promise<void> {
     const key = this.shKey(userName);
+    // 先去重
     await this.withRetry(() => this.client.lRem(key, 0, ensureString(keyword)));
+    // 插入到最前
     await this.withRetry(() => this.client.lPush(key, ensureString(keyword)));
+    // 限制最大长度
     await this.withRetry(() => this.client.lTrim(key, 0, SEARCH_HISTORY_LIMIT - 1));
   }
 
   async deleteSearchHistory(userName: string, keyword?: string): Promise<void> {
     const key = this.shKey(userName);
-    if (keyword) await this.withRetry(() => this.client.lRem(key, 0, ensureString(keyword)));
-    else await this.withRetry(() => this.client.del(key));
+    if (keyword) {
+      await this.withRetry(() => this.client.lRem(key, 0, ensureString(keyword)));
+    } else {
+      await this.withRetry(() => this.client.del(key));
+    }
   }
 
-  // ---------- Admin Config ----------
+  // ---------- 获取全部用户 ----------
+  async getAllUsers(): Promise<string[]> {
+    const keys = await this.withRetry(() => this.client.keys('u:*:pwd'));
+    return keys
+      .map((k) => {
+        const match = k.match(/^u:(.+?):pwd$/);
+        return match ? ensureString(match[1]) : undefined;
+      })
+      .filter((u): u is string => typeof u === 'string');
+  }
+
+  // ---------- 管理员配置 ----------
+  private adminConfigKey() {
+    return 'admin:config';
+  }
+
   async getAdminConfig(): Promise<AdminConfig | null> {
     const val = await this.withRetry(() => this.client.get(this.adminConfigKey()));
     return val ? (JSON.parse(val) as AdminConfig) : null;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
-    await this.withRetry(() => this.client.set(this.adminConfigKey(), JSON.stringify(config)));
+    await this.withRetry(() =>
+      this.client.set(this.adminConfigKey(), JSON.stringify(config))
+    );
   }
 
-  // ---------- Skip Config ----------
-  async getSkipConfig(userName: string, source: string, id: string): Promise<SkipConfig | null> {
-    const val = await this.withRetry(() => this.client.get(this.skipConfigKey(userName, source, id)));
+  // ---------- 跳过片头片尾配置 ----------
+  private skipConfigKey(user: string, source: string, id: string) {
+    return `u:${user}:skip:${source}+${id}`;
+  }
+
+  async getSkipConfig(
+    userName: string,
+    source: string,
+    id: string
+  ): Promise<SkipConfig | null> {
+    const val = await this.withRetry(() =>
+      this.client.get(this.skipConfigKey(userName, source, id))
+    );
     return val ? (JSON.parse(val) as SkipConfig) : null;
   }
 
-  async setSkipConfig(userName: string, source: string, id: string, config: SkipConfig): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.set(this.skipConfigKey(userName, source, id), JSON.stringify(config));
-      await this.client.sAdd(this.skipIndexKey(userName), `${source}+${id}`);
-    });
+  async setSkipConfig(
+    userName: string,
+    source: string,
+    id: string,
+    config: SkipConfig
+  ): Promise<void> {
+    await this.withRetry(() =>
+      this.client.set(
+        this.skipConfigKey(userName, source, id),
+        JSON.stringify(config)
+      )
+    );
   }
 
-  async deleteSkipConfig(userName: string, source: string, id: string): Promise<void> {
-    await this.withRetry(async () => {
-      await this.client.del(this.skipConfigKey(userName, source, id));
-      await this.client.sRem(this.skipIndexKey(userName), `${source}+${id}`);
-    });
+  async deleteSkipConfig(
+    userName: string,
+    source: string,
+    id: string
+  ): Promise<void> {
+    await this.withRetry(() =>
+      this.client.del(this.skipConfigKey(userName, source, id))
+    );
   }
 
-  async getAllSkipConfigs(userName: string): Promise<{ [key: string]: SkipConfig }> {
-    const keys = await this.withRetry(() => this.client.sMembers(this.skipIndexKey(userName)));
-    const result: { [key: string]: SkipConfig } = {};
-    for (const k of keys) {
-      const [source, id] = k.split('+');
-      const val = await this.withRetry(() => this.client.get(this.skipConfigKey(userName, source, id)));
-      if (val) result[k] = JSON.parse(val) as SkipConfig;
+  async getAllSkipConfigs(
+    userName: string
+  ): Promise<{ [key: string]: SkipConfig }> {
+    const pattern = `u:${userName}:skip:*`;
+    const keys = await this.withRetry(() => this.client.keys(pattern));
+
+    if (keys.length === 0) {
+      return {};
     }
-    return result;
+
+    const configs: { [key: string]: SkipConfig } = {};
+
+    // 批量获取所有配置
+    const values = await this.withRetry(() => this.client.mGet(keys));
+
+    keys.forEach((key, index) => {
+      const value = values[index];
+      if (value) {
+        // 从key中提取source+id
+        const match = key.match(/^u:.+?:skip:(.+)$/);
+        if (match) {
+          const sourceAndId = match[1];
+          configs[sourceAndId] = JSON.parse(value as string) as SkipConfig;
+        }
+      }
+    });
+
+    return configs;
   }
 
-  // ---------- Clear All Data ----------
+  // 清空所有数据
   async clearAllData(): Promise<void> {
     try {
-      const users = await this.getAllUsers();
-      for (const u of users) {
-        await this.deleteUser(u);
+      // 获取所有用户
+      const allUsers = await this.getAllUsers();
+
+      // 删除所有用户及其数据
+      for (const username of allUsers) {
+        await this.deleteUser(username);
       }
+
+      // 删除管理员配置
       await this.withRetry(() => this.client.del(this.adminConfigKey()));
+
       console.log('所有数据已清空');
     } catch (error) {
       console.error('清空数据失败:', error);
@@ -350,57 +476,71 @@ export abstract class BaseRedisStorage implements IStorage {
     }
   }
 
-  // ---------- Cache ----------
-  private cacheKey(key: string) { return `cache:${encodeURIComponent(key)}`; }
+  // ---------- 通用缓存方法 ----------
+  private cacheKey(key: string) {
+    return `cache:${key}`;
+  }
 
   async getCache(key: string): Promise<any | null> {
-    const val = await this.withRetry(() => this.client.get(this.cacheKey(key)));
-    return val ? JSON.parse(val) : null;
+    try {
+      const val = await this.withRetry(() => this.client.get(this.cacheKey(key)));
+      if (!val) return null;
+
+      // 智能处理返回值：兼容不同Redis客户端的行为
+      if (typeof val === 'string') {
+        // 检查是否是HTML错误页面
+        if (val.trim().startsWith('<!DOCTYPE') || val.trim().startsWith('<html')) {
+          console.error(`${this.config.clientName} returned HTML instead of JSON. Connection issue detected.`);
+          return null;
+        }
+
+        try {
+          return JSON.parse(val);
+        } catch (parseError) {
+          console.warn(`${this.config.clientName} JSON解析失败，返回原字符串 (key: ${key}):`, parseError);
+          return val; // 解析失败返回原字符串
+        }
+      } else {
+        // 某些Redis客户端可能直接返回解析后的对象
+        return val;
+      }
+    } catch (error: any) {
+      console.error(`${this.config.clientName} getCache error (key: ${key}):`, error);
+      return null;
+    }
   }
 
   async setCache(key: string, data: any, expireSeconds?: number): Promise<void> {
-    const cacheKey = this.cacheKey(key);
-    const value = JSON.stringify(data);
-    await this.withRetry(async () => {
-      if (expireSeconds) await this.client.setEx(cacheKey, expireSeconds, value);
-      else await this.client.set(cacheKey, value);
-      await this.client.sAdd(this.cacheIndexKey(), cacheKey);
-    });
+    try {
+      const cacheKey = this.cacheKey(key);
+      const value = JSON.stringify(data);
+
+      if (expireSeconds) {
+        await this.withRetry(() => this.client.setEx(cacheKey, expireSeconds, value));
+      } else {
+        await this.withRetry(() => this.client.set(cacheKey, value));
+      }
+    } catch (error) {
+      console.error(`${this.config.clientName} setCache error (key: ${key}):`, error);
+      throw error; // 重新抛出错误以便上层处理
+    }
   }
 
   async deleteCache(key: string): Promise<void> {
-    const cacheKey = this.cacheKey(key);
-    await this.withRetry(async () => {
-      await this.client.del(cacheKey);
-      await this.client.sRem(this.cacheIndexKey(), cacheKey);
-    });
+    await this.withRetry(() => this.client.del(this.cacheKey(key)));
   }
 
   async clearExpiredCache(prefix?: string): Promise<void> {
-    // 从索引集合里获取所有缓存 key
-    const allMembers: string[] = await this.withRetry(() =>
-      this.client.sMembers(this.cacheIndexKey())
-    );
-  
-    let cleared = 0;
-    for (const key of allMembers) {
-      // 如果没有 prefix，全部清理；有 prefix 时只清理符合条件的
-      if (!prefix || key.startsWith(`cache:${encodeURIComponent(prefix)}`)) {
-        await this.withRetry(() => this.client.del(key));
-        await this.withRetry(() => this.client.sRem(this.cacheIndexKey(), key));
-        cleared++;
-      }
-    }
-  
-    if (cleared > 0) {
-      console.log(
-        `Cleared ${cleared} cache entr${cleared > 1 ? "ies" : "y"} with prefix: ${
-          prefix ?? "ALL"
-        }`
-      );
+    // Redis的TTL机制会自动清理过期数据，这里主要用于手动清理
+    // 可以根据需要实现特定前缀的缓存清理
+    const pattern = prefix ? `cache:${prefix}*` : 'cache:*';
+    const keys = await this.withRetry(() => this.client.keys(pattern));
+
+    if (keys.length > 0) {
+      await this.withRetry(() => this.client.del(keys));
+      console.log(`Cleared ${keys.length} cache entries with pattern: ${pattern}`);
     }
   }
-  
 
   // ---------- 播放统计相关 ----------
   private playStatsKey() {
@@ -426,6 +566,7 @@ export abstract class BaseRedisStorage implements IStorage {
 
       // 重新计算统计数据
       const allUsers = await this.getAllUsers();
+
       const userStats: UserPlayStat[] = [];
       let totalWatchTime = 0;
       let totalPlays = 0;
@@ -514,13 +655,13 @@ export abstract class BaseRedisStorage implements IStorage {
       }
 
       // 计算统计数据
-      const totalWatchTime = records.reduce((sum, record) => sum + record.play_time, 0);
+      const totalWatchTime = records.reduce((sum, record) => sum + (record.play_time || 0), 0);
       const totalPlays = records.length;
-      const lastPlayTime = Math.max(...records.map(r => r.save_time));
+      const lastPlayTime = Math.max(...records.map(r => r.save_time || 0));
 
       // 最近10条记录，按时间排序
       const recentRecords = records
-        .sort((a, b) => b.save_time - a.save_time)
+        .sort((a, b) => (b.save_time || 0) - (a.save_time || 0))
         .slice(0, 10);
 
       // 平均观看时长
@@ -529,8 +670,9 @@ export abstract class BaseRedisStorage implements IStorage {
       // 最常观看的来源
       const sourceMap = new Map<string, number>();
       records.forEach(record => {
-        const count = sourceMap.get(record.source_name) || 0;
-        sourceMap.set(record.source_name, count + 1);
+        const sourceName = record.source_name || '未知来源';
+        const count = sourceMap.get(sourceName) || 0;
+        sourceMap.set(sourceName, count + 1);
       });
 
       const mostWatchedSource = sourceMap.size > 0
