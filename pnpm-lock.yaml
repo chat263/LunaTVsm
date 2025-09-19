@@ -85,6 +85,7 @@ importers:
         version: 5.5.0(react@18.3.1)
       react-window:
 <<<<<<< HEAD
+<<<<<<< HEAD
         specifier: ^2.0.0
         version: 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-window-infinite-loader:
@@ -97,6 +98,13 @@ importers:
         specifier: ^1.0.10
         version: 1.0.10(react-window@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
 >>>>>>> 229698fda5e742bcf32635e583ec3126d3d4742d
+=======
+        specifier: ^2.1.1
+        version: 2.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-window-infinite-loader:
+        specifier: ^1.0.10
+        version: 1.0.10(react-window@2.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+>>>>>>> 1e7c921c9080458c08679cd8e882313d9a3248e6
       redis:
         specifier: ^4.6.7
         version: 4.7.1
@@ -4388,9 +4396,14 @@ packages:
     engines: {node: '>=0.10.0'}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
   react-window@2.1.0:
     resolution: {integrity: sha512-STMrsd6t3pN/XFa5cblpwTLpsEDtrtdeNY+71QsEaY0m7Fhbn9R4XXYzYAyKDpeYbjmBpAflqHBdDDKW928m3Q==}
+=======
+  react-window@2.1.1:
+    resolution: {integrity: sha512-Wx5yHri8G1nFxImnJRkEEKtRTnG3cWaqknUJyYvgisQtl1mw/d8LQmLXfuKxpn2dY8IwDn5mCIuxm2NVyIvgVQ==}
+>>>>>>> 1e7c921c9080458c08679cd8e882313d9a3248e6
     engines: {node: '>=10'}
     peerDependencies:
       react: ^15.0.0 || ^16.0.0 || ^17.0.0 || ^18.0.0
@@ -10328,18 +10341,22 @@ snapshots:
 =======
       loose-envify: 1.4.0
 
-  react-window@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-window@2.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       '@babel/runtime': 7.27.6
       memoize-one: 5.2.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  react-window-infinite-loader@1.0.10(react-window@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
+  react-window-infinite-loader@1.0.10(react-window@2.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1):
     dependencies:
       react: 18.3.1
+<<<<<<< HEAD
       react-window: 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 >>>>>>> 229698fda5e742bcf32635e583ec3126d3d4742d
+=======
+      react-window: 2.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+>>>>>>> 1e7c921c9080458c08679cd8e882313d9a3248e6
 
   read-cache@1.0.0:
     dependencies:
