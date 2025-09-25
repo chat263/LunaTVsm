@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const config = await getConfig();
-    if (authInfo.username !== process.env.ADMIN_USERNAME) {
+    if (authInfo.username !== process.env.USERNAME) {
       // 非站长，检查用户存在或被封禁
       const user = config.UserConfig.Users.find(
         (u) => u.username === authInfo.username
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const adminConfig = await getConfig();
-    if (authInfo.username !== process.env.ADMIN_USERNAME) {
+    if (authInfo.username !== process.env.USERNAME) {
       // 非站长，检查用户存在或被封禁
       const user = adminConfig.UserConfig.Users.find(
         (u) => u.username === authInfo.username
@@ -114,7 +114,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const adminConfig = await getConfig();
-    if (authInfo.username !== process.env.ADMIN_USERNAME) {
+    if (authInfo.username !== process.env.USERNAME) {
       // 非站长，检查用户存在或被封禁
       const user = adminConfig.UserConfig.Users.find(
         (u) => u.username === authInfo.username

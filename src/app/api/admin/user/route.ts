@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
         const newUser: any = {
           username: targetUsername!,
           role: 'user',
+          createdAt: Date.now(), // 设置创建时间戳
         };
 
         // 如果指定了用户组，添加到tags中
