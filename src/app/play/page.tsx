@@ -2355,6 +2355,7 @@ function PlayPageClient() {
   // 播放记录相关
   // ---------------------------------------------------------------------------
   // 保存播放进度
+  // eslint-disable-next-line @typescript-eslint/no-inferrable-types
   const saveCurrentPlayProgress = async (strtype: string = '') => {
     if (
       !artPlayerRef.current ||
