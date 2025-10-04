@@ -2355,7 +2355,7 @@ function PlayPageClient() {
   // 播放记录相关
   // ---------------------------------------------------------------------------
   // 保存播放进度
-  const saveCurrentPlayProgress = async (strtype='') => {
+  const saveCurrentPlayProgress = async (strtype: string = '') => {
     if (
       !artPlayerRef.current ||
       !currentSourceRef.current ||
