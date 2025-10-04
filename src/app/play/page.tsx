@@ -2355,7 +2355,7 @@ function PlayPageClient() {
   // 播放记录相关
   // ---------------------------------------------------------------------------
   // 保存播放进度
-  const saveCurrentPlayProgress = async () => {
+  const saveCurrentPlayProgress = async (strtype='') => {
     if (
       !artPlayerRef.current ||
       !currentSourceRef.current ||
@@ -2387,6 +2387,7 @@ function PlayPageClient() {
         total_time: Math.floor(duration),
         save_time: Date.now(),
         search_title: searchTitle,
+        strtype: strtype,
       });
 
       lastSaveTimeRef.current = Date.now();
@@ -2412,7 +2413,7 @@ function PlayPageClient() {
     // 页面可见性变化时保存播放进度和释放 Wake Lock
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        saveCurrentPlayProgress();
+        saveCurrentPlayProgress('pause');
         releaseWakeLock();
       } else if (document.visibilityState === 'visible') {
         // 页面重新可见时，如果正在播放则重新请求 Wake Lock
@@ -3680,7 +3681,7 @@ function PlayPageClient() {
 
       artPlayerRef.current.on('pause', () => {
         releaseWakeLock();
-        saveCurrentPlayProgress();
+        saveCurrentPlayProgress('pause');
       });
 
       artPlayerRef.current.on('video:ended', () => {
@@ -3910,7 +3911,7 @@ function PlayPageClient() {
       });
 
       artPlayerRef.current.on('pause', () => {
-        saveCurrentPlayProgress();
+        saveCurrentPlayProgress('pause');
       });
 
       if (artPlayerRef.current?.video) {

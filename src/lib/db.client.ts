@@ -15,11 +15,13 @@
  */
 
 import { getAuthInfoFromBrowserCookie } from './auth';
-import { SkipConfig, UserPlayStat } from './types';
 import type { PlayRecord } from './types';
+import { SkipConfig, UserPlayStat } from './types';
 
 // 重新导出类型以保持API兼容性
 export type { PlayRecord } from './types';
+
+const saveobj = {curtime:0};
 
 // 全局错误触发函数
 function triggerGlobalError(message: string) {
@@ -687,6 +689,12 @@ export async function savePlayRecord(
   id: string,
   record: PlayRecord
 ): Promise<void> {
+  if(record.strtype!='pause'){
+    if(record.save_time-saveobj.curtime<10000&&saveobj.curtime-record.save_time<10000){
+      return;
+    }
+  }
+  saveobj.curtime = record.save_time;
   const key = generateStorageKey(source, id);
 
   // 获取现有播放记录，检查是否需要设置原始集数
