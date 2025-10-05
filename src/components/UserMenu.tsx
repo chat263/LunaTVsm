@@ -303,7 +303,7 @@ export const UserMenu: React.FC = () => {
               return;
             }
             saveobj.curtime=lastCheckTime;
-        }
+          }
 
           // 执行检查
           await checkWatchingUpdates();
