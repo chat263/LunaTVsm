@@ -31,6 +31,8 @@ import EpisodeSelector from '@/components/EpisodeSelector';
 import NetDiskSearchResults from '@/components/NetDiskSearchResults';
 import PageLayout from '@/components/PageLayout';
 
+const saveobj = {curtime:0};
+
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
   interface HTMLVideoElement {
@@ -2377,6 +2379,11 @@ function PlayPageClient() {
     }
 
     try {
+      if(currentTime-saveobj.curtime<10000&&saveobj.curtime-currentTime<10000){
+        return;
+      }
+      saveobj.curtime = currentTime;
+
       // 获取现有播放记录以保持原始集数
       const existingRecord = await getAllPlayRecords().then(records => {
         const key = generateStorageKey(currentSourceRef.current, currentIdRef.current);
