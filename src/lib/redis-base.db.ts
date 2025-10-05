@@ -92,6 +92,8 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
     const clientConfig: any = {
       url: config.url,
       socket: {
+        tls: true,
+        rejectUnauthorized: false, // 开启证书验证
         // 重连策略：指数退避，最大30秒
         reconnectStrategy: (retries: number) => {
           console.log(`${config.clientName} reconnection attempt ${retries + 1}`);
@@ -851,7 +853,7 @@ export abstract class BaseRedisStorage implements IStorage {
         firstLoginTime: loginStats.firstLoginTime,
         lastLoginTime: loginStats.lastLoginTime,
         lastLoginDate: loginStats.lastLoginDate
-      };
+        };
     } catch (error) {
       console.error(`获取用户 ${userName} 统计失败:`, error);
       return {
@@ -871,7 +873,7 @@ export abstract class BaseRedisStorage implements IStorage {
         firstLoginTime: 0,
         lastLoginTime: 0,
         lastLoginDate: 0
-      };
+        };
     }
   }
 
