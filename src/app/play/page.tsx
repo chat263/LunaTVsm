@@ -2379,8 +2379,10 @@ function PlayPageClient() {
     }
 
     try {
-      if(currentTime-saveobj.curtime<10&&saveobj.curtime-currentTime<10){
-        return;
+      if(strtype!='pause'){
+        if(currentTime-saveobj.curtime<10&&saveobj.curtime-currentTime<10){
+          return;
+        }
       }
       saveobj.curtime = currentTime;
 
