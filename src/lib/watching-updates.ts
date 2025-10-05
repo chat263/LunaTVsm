@@ -1,12 +1,26 @@
 'use client';
 
-import { getAllPlayRecords, PlayRecord, generateStorageKey } from './db.client';
+import { getAllPlayRecords, PlayRecord, generateStorageKey, forceRefreshPlayRecordsCache, savePlayRecord } from './db.client';
 
 // 缓存键
 const WATCHING_UPDATES_CACHE_KEY = 'moontv_watching_updates';
 const LAST_CHECK_TIME_KEY = 'moontv_last_update_check';
 const ORIGINAL_EPISODES_CACHE_KEY = 'moontv_original_episodes'; // 新增：记录观看时的总集数
 const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
+
+// 防重复修复标记
+const fixingRecords = new Set<string>();
+
+// 内存缓存（用于非 localStorage 模式，避免 QuotaExceededError）
+let memoryWatchingUpdatesCache: WatchingUpdatesCache | null = null;
+let memoryLastCheckTime = 0;
+
+// 检测存储模式
+const STORAGE_TYPE = (() => {
+  if (typeof window === 'undefined') return 'localstorage';
+  const raw = (window as any).RUNTIME_CONFIG?.STORAGE_TYPE || 'localstorage';
+  return raw;
+})();
 
 // 事件名称
 export const WATCHING_UPDATES_EVENT = 'watchingUpdatesChanged';
@@ -59,8 +73,14 @@ export async function checkWatchingUpdates(): Promise<void> {
   try {
     console.log('开始检查追番更新...');
 
+    // 强制刷新播放记录缓存，确保获取最新的播放记录数据
+    console.log('强制刷新播放记录缓存以确保数据同步...');
+    forceRefreshPlayRecordsCache();
+
     // 检查缓存是否有效
-    const lastCheckTime = parseInt(localStorage.getItem(LAST_CHECK_TIME_KEY) || '0');
+    const lastCheckTime = STORAGE_TYPE !== 'localstorage'
+      ? memoryLastCheckTime
+      : parseInt(localStorage.getItem(LAST_CHECK_TIME_KEY) || '0');
     const currentTime = Date.now();
 
     if (currentTime - lastCheckTime < CACHE_DURATION) {
@@ -87,7 +107,11 @@ export async function checkWatchingUpdates(): Promise<void> {
         updatedSeries: []
       };
       cacheWatchingUpdates(emptyResult);
-      localStorage.setItem(LAST_CHECK_TIME_KEY, currentTime.toString());
+      if (STORAGE_TYPE !== 'localstorage') {
+        memoryLastCheckTime = currentTime;
+      } else {
+        localStorage.setItem(LAST_CHECK_TIME_KEY, currentTime.toString());
+      }
       notifyListeners(false);
       return;
     }
@@ -110,7 +134,7 @@ export async function checkWatchingUpdates(): Promise<void> {
       try {
         // 从存储key中解析出videoId
         const [sourceName, videoId] = record.id.split('+');
-        const updateInfo = await checkSingleRecordUpdate(record, videoId);
+        const updateInfo = await checkSingleRecordUpdate(record, videoId, sourceName);
 
         // 使用从 checkSingleRecordUpdate 返回的 protectedTotalEpisodes（已经包含了保护机制）
         const protectedTotalEpisodes = updateInfo.latestEpisodes;
@@ -184,7 +208,11 @@ export async function checkWatchingUpdates(): Promise<void> {
     };
 
     cacheWatchingUpdates(result);
-    localStorage.setItem(LAST_CHECK_TIME_KEY, currentTime.toString());
+    if (STORAGE_TYPE !== 'localstorage') {
+      memoryLastCheckTime = currentTime;
+    } else {
+      localStorage.setItem(LAST_CHECK_TIME_KEY, currentTime.toString());
+    }
 
     // 通知监听器
     notifyListeners(hasAnyUpdates);
@@ -205,7 +233,7 @@ export async function checkWatchingUpdates(): Promise<void> {
 /**
  * 检查单个剧集的更新状态（调用真实API）
  */
-async function checkSingleRecordUpdate(record: PlayRecord, videoId: string): Promise<{ hasUpdate: boolean; hasContinueWatching: boolean; newEpisodes: number; remainingEpisodes: number; latestEpisodes: number }> {
+async function checkSingleRecordUpdate(record: PlayRecord, videoId: string, storageSourceName?: string): Promise<{ hasUpdate: boolean; hasContinueWatching: boolean; newEpisodes: number; remainingEpisodes: number; latestEpisodes: number }> {
   try {
     let sourceKey = record.source_name;
 
@@ -252,7 +280,8 @@ async function checkSingleRecordUpdate(record: PlayRecord, videoId: string): Pro
     });
 
     // 获取观看时的原始总集数（不会被自动更新影响）
-    const originalTotalEpisodes = getOriginalEpisodes(record, videoId);
+    const recordKey = generateStorageKey(storageSourceName || record.source_name, videoId);
+    const originalTotalEpisodes = await getOriginalEpisodes(record, videoId, recordKey);
 
     console.log(`${record.title} 集数对比:`, {
       '原始集数': originalTotalEpisodes,
@@ -280,6 +309,26 @@ async function checkSingleRecordUpdate(record: PlayRecord, videoId: string): Pro
 
     if (hasUpdate) {
       console.log(`${record.title} 发现新集数: ${originalTotalEpisodes} -> ${latestEpisodes} 集，新增${newEpisodes}集`);
+
+      // 如果检测到新集数，同时更新播放记录的total_episodes
+      if (latestEpisodes > record.total_episodes) {
+        console.log(`🔄 更新播放记录集数: ${record.title} ${record.total_episodes} -> ${latestEpisodes}`);
+        try {
+          // 🔒 关键修复：更新前必须确保 original_episodes 已正确设置
+          // 使用我们已经获取到的 originalTotalEpisodes（来自 getOriginalEpisodes）
+          const updatedRecord: PlayRecord = {
+            ...record,
+            total_episodes: latestEpisodes,
+            // ✅ 使用已经通过 getOriginalEpisodes 获取/修复的原始集数
+            original_episodes: originalTotalEpisodes
+          };
+
+          await savePlayRecord(storageSourceName || record.source_name, videoId, updatedRecord);
+          console.log(`✅ 播放记录集数更新成功: ${record.title}，original_episodes 保持为 ${updatedRecord.original_episodes}`);
+        } catch (error) {
+          console.error(`❌ 更新播放记录集数失败: ${record.title}`, error);
+        }
+      }
     }
 
     if (hasContinueWatching) {
@@ -314,12 +363,100 @@ async function checkSingleRecordUpdate(record: PlayRecord, videoId: string): Pro
 
 /**
  * 获取观看时的原始总集数，如果没有记录则使用当前播放记录中的集数
+ * 关键修复：对于旧数据，同步修复original_episodes，避免被后续更新覆盖
  */
-function getOriginalEpisodes(record: PlayRecord, videoId: string): number {
-  // 优先使用播放记录中保存的原始集数
+async function getOriginalEpisodes(record: PlayRecord, videoId: string, recordKey: string): Promise<number> {
+  // 添加详细调试信息
+  console.log(`🔍 getOriginalEpisodes 调试信息 - ${record.title}:`, {
+    'record.original_episodes': record.original_episodes,
+    'record.total_episodes': record.total_episodes,
+    '类型检查': typeof record.original_episodes,
+    '完整记录': record
+  });
+
+  // 🔑 关键修复：不信任内存中的 original_episodes（可能来自缓存）
+  // 始终从数据库重新读取最新的 original_episodes
+  try {
+    console.log(`🔍 从数据库读取最新的原始集数: ${record.title}`);
+    const freshRecordsResponse = await fetch('/api/playrecords');
+    if (freshRecordsResponse.ok) {
+      const freshRecords = await freshRecordsResponse.json();
+      const freshRecord = freshRecords[recordKey];
+
+      if (freshRecord?.original_episodes && freshRecord.original_episodes > 0) {
+        console.log(`📚 从数据库读取到最新原始集数: ${record.title} = ${freshRecord.original_episodes}集 (当前播放记录: ${record.total_episodes}集)`);
+        return freshRecord.original_episodes;
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ 从数据库读取原始集数失败: ${record.title}，使用内存值`, error);
+  }
+
+  // 备用方案：如果数据库读取失败，使用内存中的值
   if (record.original_episodes && record.original_episodes > 0) {
-    console.log(`📚 从播放记录读取原始集数: ${record.title} = ${record.original_episodes}集 (当前播放记录: ${record.total_episodes}集)`);
+    console.log(`📚 使用内存中的原始集数: ${record.title} = ${record.original_episodes}集 (当前播放记录: ${record.total_episodes}集)`);
     return record.original_episodes;
+  }
+
+  // 🔧 关键修复：对于旧数据（original_episodes = null），立即同步修复
+  // 🚨 重要：record.total_episodes 可能已经被 checkSingleRecordUpdate 的第 294-310 行更新过
+  // 解决方案：不使用内存中的 record.total_episodes，而是从数据库重新读取原始值
+  if ((record.original_episodes === undefined || record.original_episodes === null) && record.total_episodes > 0) {
+    console.log(`🔧 检测到历史记录缺少原始集数，需要从数据库读取原始值: ${record.title}`);
+
+    // 🔒 防重复修复：检查是否已经在修复中
+    if (!fixingRecords.has(recordKey)) {
+      fixingRecords.add(recordKey);
+
+      try {
+        // 🔑 关键：从数据库重新读取播放记录，获取未被更新的 total_episodes
+        const freshRecordsResponse = await fetch('/api/playrecords');
+        if (!freshRecordsResponse.ok) {
+          throw new Error('无法从数据库读取播放记录');
+        }
+        const freshRecords = await freshRecordsResponse.json();
+        const freshRecord = freshRecords[recordKey];
+
+        if (!freshRecord) {
+          console.warn(`⚠️ 数据库中未找到记录: ${record.title}，使用当前值`);
+          fixingRecords.delete(recordKey);
+          return record.total_episodes;
+        }
+
+        // 使用数据库中的 total_episodes 作为原始集数
+        const originalEpisodesToFix = freshRecord.total_episodes;
+        console.log(`📚 从数据库读取到原始集数: ${record.title} = ${originalEpisodesToFix}集 (内存中已更新为 ${record.total_episodes}集)`);
+
+        // 立即保存原始集数到数据库
+        await fetch('/api/playrecords', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: recordKey,
+            record: {
+              ...freshRecord,  // 使用数据库中的完整记录
+              original_episodes: originalEpisodesToFix,  // 设置原始集数
+              save_time: freshRecord.save_time // 保持原有的save_time
+            }
+          })
+        });
+        console.log(`✅ 已同步修复 ${record.title} 的原始集数: ${originalEpisodesToFix}集`);
+
+        // 修复完成后移除标记
+        fixingRecords.delete(recordKey);
+
+        // 返回修复后的值
+        return originalEpisodesToFix;
+      } catch (error) {
+        console.error(`❌ 修复 ${record.title} 原始集数失败:`, error);
+        fixingRecords.delete(recordKey);
+        // 失败时仍然返回当前值，但下次会重试
+        return record.total_episodes;
+      }
+    } else {
+      console.log(`⏳ ${record.title} 原始集数修复正在进行中，使用当前值`);
+      return record.total_episodes;
+    }
   }
 
   // 如果没有原始集数记录，尝试从localStorage读取（向后兼容）
@@ -338,7 +475,7 @@ function getOriginalEpisodes(record: PlayRecord, videoId: string): number {
     console.warn('从localStorage读取原始集数失败:', error);
   }
 
-  // 都没有的话，使用当前播放记录集数
+  // 都没有的话，使用当前播放记录集数（最后的fallback）
   console.log(`⚠️ 该剧集未找到原始集数记录，使用当前播放记录集数: ${record.title} = ${record.total_episodes}集`);
   return record.total_episodes;
 }
@@ -348,6 +485,14 @@ function getOriginalEpisodes(record: PlayRecord, videoId: string): number {
  */
 export function getCachedWatchingUpdates(): boolean {
   try {
+    // 🔧 优化：非 localStorage 模式使用内存缓存
+    if (STORAGE_TYPE !== 'localstorage') {
+      if (!memoryWatchingUpdatesCache) return false;
+      const isExpired = Date.now() - memoryWatchingUpdatesCache.timestamp > CACHE_DURATION;
+      return isExpired ? false : memoryWatchingUpdatesCache.hasUpdates;
+    }
+
+    // localStorage 模式
     const cached = localStorage.getItem(WATCHING_UPDATES_CACHE_KEY);
     if (!cached) return false;
 
@@ -374,12 +519,19 @@ function cacheWatchingUpdates(data: WatchingUpdate): void {
       updatedSeries: data.updatedSeries
     };
     console.log('准备缓存的数据:', cacheData);
-    localStorage.setItem(WATCHING_UPDATES_CACHE_KEY, JSON.stringify(cacheData));
-    console.log('数据已写入缓存');
 
-    // 验证写入结果
-    const verification = localStorage.getItem(WATCHING_UPDATES_CACHE_KEY);
-    console.log('缓存验证 - 实际存储的数据:', verification);
+    // 🔧 优化：非 localStorage 模式使用内存缓存（避免 QuotaExceededError）
+    if (STORAGE_TYPE !== 'localstorage') {
+      memoryWatchingUpdatesCache = cacheData;
+      console.log('数据已写入内存缓存');
+    } else {
+      localStorage.setItem(WATCHING_UPDATES_CACHE_KEY, JSON.stringify(cacheData));
+      console.log('数据已写入 localStorage 缓存');
+
+      // 验证写入结果
+      const verification = localStorage.getItem(WATCHING_UPDATES_CACHE_KEY);
+      console.log('缓存验证 - 实际存储的数据:', verification);
+    }
   } catch (error) {
     console.error('缓存更新信息失败:', error);
   }
@@ -459,6 +611,31 @@ export function setupVisibilityChangeCheck(): () => void {
  */
 export function getDetailedWatchingUpdates(): WatchingUpdate | null {
   try {
+    // 🔧 优化：非 localStorage 模式使用内存缓存
+    if (STORAGE_TYPE !== 'localstorage') {
+      if (!memoryWatchingUpdatesCache) {
+        console.log('内存缓存为空');
+        return null;
+      }
+
+      const isExpired = Date.now() - memoryWatchingUpdatesCache.timestamp > CACHE_DURATION;
+      if (isExpired) {
+        console.log('内存缓存已过期');
+        return null;
+      }
+
+      const result = {
+        hasUpdates: memoryWatchingUpdatesCache.hasUpdates,
+        timestamp: memoryWatchingUpdatesCache.timestamp,
+        updatedCount: memoryWatchingUpdatesCache.updatedCount,
+        continueWatchingCount: memoryWatchingUpdatesCache.continueWatchingCount,
+        updatedSeries: memoryWatchingUpdatesCache.updatedSeries
+      };
+      console.log('从内存缓存返回数据:', result);
+      return result;
+    }
+
+    // localStorage 模式
     const cached = localStorage.getItem(WATCHING_UPDATES_CACHE_KEY);
     console.log('从缓存读取原始数据:', cached);
     if (!cached) {
@@ -526,8 +703,14 @@ export function markUpdatesAsViewed(): void {
  */
 export function clearWatchingUpdates(): void {
   try {
-    localStorage.removeItem(WATCHING_UPDATES_CACHE_KEY);
-    localStorage.removeItem(LAST_CHECK_TIME_KEY);
+    // 🔧 优化：非 localStorage 模式清除内存缓存
+    if (STORAGE_TYPE !== 'localstorage') {
+      memoryWatchingUpdatesCache = null;
+      memoryLastCheckTime = 0;
+    } else {
+      localStorage.removeItem(WATCHING_UPDATES_CACHE_KEY);
+      localStorage.removeItem(LAST_CHECK_TIME_KEY);
+    }
 
     // 通知监听器
     notifyListeners(false);
@@ -556,7 +739,7 @@ export async function checkVideoUpdate(sourceName: string, videoId: string): Pro
       return;
     }
 
-    const updateInfo = await checkSingleRecordUpdate(targetRecord, videoId);
+    const updateInfo = await checkSingleRecordUpdate(targetRecord, videoId, sourceName);
 
     if (updateInfo.hasUpdate) {
       // 如果发现这个视频有更新，重新检查所有更新状态
