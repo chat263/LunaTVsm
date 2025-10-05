@@ -2379,7 +2379,7 @@ function PlayPageClient() {
     }
 
     try {
-      if(currentTime-saveobj.curtime<10000&&saveobj.curtime-currentTime<10000){
+      if(currentTime-saveobj.curtime<10&&saveobj.curtime-currentTime<10){
         return;
       }
       saveobj.curtime = currentTime;
