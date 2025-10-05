@@ -70,6 +70,7 @@ export const UserMenu: React.FC = () => {
   const [playRecords, setPlayRecords] = useState<(PlayRecord & { key: string })[]>([]);
   const [favorites, setFavorites] = useState<(Favorite & { key: string })[]>([]);
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
+  const saveobj = {curtime:0};
 
   // Body 滚动锁定 - 使用 overflow 方式避免布局问题
   useEffect(() => {
@@ -297,11 +298,17 @@ export const UserMenu: React.FC = () => {
         try {
           // 暂时清除缓存时间，强制检查一次
           const lastCheckTime = localStorage.getItem('moontv_last_update_check');
-          localStorage.removeItem('moontv_last_update_check');
+          if (lastCheckTime) {
+            if(lastCheckTime-saveobj.curtime<10000&&saveobj.curtime-lastCheckTime<10000){
+              return;
+            }
+            saveobj.curtime=lastCheckTime;
+        }
 
           // 执行检查
           await checkWatchingUpdates();
 
+          localStorage.removeItem('moontv_last_update_check');
           // 恢复缓存时间（如果之前有的话）
           if (lastCheckTime) {
             localStorage.setItem('moontv_last_update_check', lastCheckTime);
