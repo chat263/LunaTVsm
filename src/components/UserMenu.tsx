@@ -299,10 +299,10 @@ export const UserMenu: React.FC = () => {
           // 暂时清除缓存时间，强制检查一次
           const lastCheckTime = localStorage.getItem('moontv_last_update_check');
           if (lastCheckTime) {
-            if(lastCheckTime-saveobj.curtime<10000&&saveobj.curtime-lastCheckTime<10000){
+            if(parseInt(lastCheckTime)-saveobj.curtime<10000&&saveobj.curtime-parseInt(lastCheckTime)<10000){
               return;
             }
-            saveobj.curtime=lastCheckTime;
+            saveobj.curtime=parseInt(lastCheckTime);
           }
 
           // 执行检查
