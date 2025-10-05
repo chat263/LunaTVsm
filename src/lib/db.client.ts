@@ -22,6 +22,7 @@ import { SkipConfig, UserPlayStat } from './types';
 export type { PlayRecord } from './types';
 
 const saveobj = {curtime:0};
+const saveobj1 = {curtime:0};
 
 // 全局错误触发函数
 function triggerGlobalError(message: string) {
@@ -711,6 +712,11 @@ export async function getAllPlayRecords(): Promise<Record<string, PlayRecord>> {
   if (typeof window === 'undefined') {
     return {};
   }
+  const current = Date.now();
+  if(current-saveobj1.curtime<10000&&saveobj1.curtime-current<10000){
+    return {};
+  }
+  saveobj1.curtime = current;
 
   // 数据库存储模式：使用混合缓存策略（包括 redis 和 upstash）
   if (STORAGE_TYPE !== 'localstorage') {
