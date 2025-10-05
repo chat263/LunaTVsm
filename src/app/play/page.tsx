@@ -3906,8 +3906,9 @@ function PlayPageClient() {
         const interval = process.env.NEXT_PUBLIC_STORAGE_TYPE === 'upstash' ? 20000 : 10000; // 统一提高到10秒
         
         if (saveNow - lastSaveTimeRef.current > interval) {
-          saveCurrentPlayProgress();
           lastSaveTimeRef.current = saveNow;
+          console.warn('save:'+saveNow);
+          saveCurrentPlayProgress();
         }
       });
 

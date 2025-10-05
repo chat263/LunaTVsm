@@ -696,9 +696,10 @@ export async function savePlayRecord(
   }
   saveobj.curtime = record.save_time;
   const key = generateStorageKey(source, id);
+  console.warn('saved:'+record.save_time);
 
   // 获取现有播放记录，检查是否需要设置原始集数
-  const existingRecords = await getAllPlayRecords();
+  const existingRecords : Record<string, PlayRecord> = {};
   const existingRecord = existingRecords[key];
 
   // 如果是首次保存该记录，且总集数大于1，则保存原始集数
