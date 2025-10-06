@@ -168,6 +168,10 @@ function PlayPageClient() {
   // 集数相关
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
 
+  // 换源相关状态
+  const [availableSources, setAvailableSources] = useState<SearchResult[]>([]);
+  const availableSourcesRef = useRef<SearchResult[]>([]);
+
   const currentSourceRef = useRef(currentSource);
   const currentIdRef = useRef(currentId);
   const videoTitleRef = useRef(videoTitle);
@@ -185,6 +189,7 @@ function PlayPageClient() {
     videoTitleRef.current = videoTitle;
     videoYearRef.current = videoYear;
     videoDoubanIdRef.current = videoDoubanId;
+    availableSourcesRef.current = availableSources;
   }, [
     currentSource,
     currentId,
@@ -193,6 +198,7 @@ function PlayPageClient() {
     videoTitle,
     videoYear,
     videoDoubanId,
+    availableSources,
   ]);
 
   // 加载详情（豆瓣或bangumi）
@@ -262,8 +268,6 @@ function PlayPageClient() {
   // 上次使用的播放速率，默认 1.0
   const lastPlaybackRateRef = useRef<number>(1.0);
 
-  // 换源相关状态
-  const [availableSources, setAvailableSources] = useState<SearchResult[]>([]);
   const [sourceSearchLoading, setSourceSearchLoading] = useState(false);
   const [sourceSearchError, setSourceSearchError] = useState<string | null>(
     null
@@ -2394,6 +2398,12 @@ function PlayPageClient() {
 
       const currentTotalEpisodes = detailRef.current?.episodes.length || 1;
 
+      // 尝试从换源列表中获取更准确的 remarks（搜索接口比详情接口更可能有 remarks）
+      const sourceFromList = availableSourcesRef.current?.find(
+        s => s.source === currentSourceRef.current && s.id === currentIdRef.current
+      );
+      const remarksToSave = sourceFromList?.remarks || detailRef.current?.remarks;
+
       await savePlayRecord(currentSourceRef.current, currentIdRef.current, {
         title: videoTitleRef.current,
         source_name: detailRef.current?.source_name || '',
@@ -2408,6 +2418,7 @@ function PlayPageClient() {
         save_time: Date.now(),
         search_title: searchTitle,
         strtype: strtype,
+        remarks: remarksToSave, // 优先使用搜索结果的 remarks，因为详情接口可能没有
       });
 
       lastSaveTimeRef.current = Date.now();

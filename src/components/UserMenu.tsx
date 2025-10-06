@@ -297,22 +297,17 @@ export const UserMenu: React.FC = () => {
         console.log('页面初始化，强制检查更新...');
         try {
           // 暂时清除缓存时间，强制检查一次
-          const lastCheckTime = localStorage.getItem('moontv_last_update_check');
+          const lastCheckTime = Date.now();
           if (lastCheckTime) {
-            if(parseInt(lastCheckTime)-saveobj.curtime<10000&&saveobj.curtime-parseInt(lastCheckTime)<10000){
+            if((lastCheckTime)-saveobj.curtime<10000&&saveobj.curtime-(lastCheckTime)<10000){
               return;
             }
-            saveobj.curtime=parseInt(lastCheckTime);
+            saveobj.curtime=(lastCheckTime);
           }
 
-          // 执行检查
-          await checkWatchingUpdates();
-
-          localStorage.removeItem('moontv_last_update_check');
-          // 恢复缓存时间（如果之前有的话）
-          if (lastCheckTime) {
-            localStorage.setItem('moontv_last_update_check', lastCheckTime);
-          }
+          // 🔧 修复：直接使用 forceRefresh=true，不再手动操作 localStorage
+          // 因为 kvrocks 模式使用内存缓存，删除 localStorage 无效
+          await checkWatchingUpdates(true);
 
           // 更新UI
           updateWatchingUpdates();
