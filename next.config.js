@@ -12,6 +12,8 @@ const nextConfig = {
 
   experimental: {
     instrumentationHook: process.env.NODE_ENV === 'production',
+    optimizeCss: true,
+    optimizeFonts: false,
   },
 
   // Uncoment to add domain whitelist
