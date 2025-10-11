@@ -774,6 +774,8 @@ export const UserMenu: React.FC = () => {
     setEnableAutoSkip(value);
     if (typeof window !== 'undefined') {
       localStorage.setItem('enableAutoSkip', JSON.stringify(value));
+      // 🔑 通知 SkipController localStorage 已更新
+      window.dispatchEvent(new Event('localStorageChanged'));
     }
   };
 
@@ -781,6 +783,8 @@ export const UserMenu: React.FC = () => {
     setEnableAutoNextEpisode(value);
     if (typeof window !== 'undefined') {
       localStorage.setItem('enableAutoNextEpisode', JSON.stringify(value));
+      // 🔑 通知 SkipController localStorage 已更新
+      window.dispatchEvent(new Event('localStorageChanged'));
     }
   };
 
@@ -2095,14 +2099,17 @@ export const UserMenu: React.FC = () => {
       <div className='relative'>
         <button
           onClick={handleMenuClick}
-          className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
+          className='relative w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:text-blue-500 dark:text-gray-300 dark:hover:text-blue-400 transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 group'
           aria-label='User Menu'
         >
-          <User className='w-full h-full' />
+          {/* 微光背景效果 */}
+          <div className='absolute inset-0 rounded-full bg-gradient-to-br from-blue-400/0 to-purple-600/0 group-hover:from-blue-400/20 group-hover:to-purple-600/20 dark:group-hover:from-blue-300/20 dark:group-hover:to-purple-500/20 transition-all duration-300'></div>
+
+          <User className='w-full h-full relative z-10 group-hover:scale-110 transition-transform duration-300' />
         </button>
         {/* 统一更新提醒点：版本更新或剧集更新都显示橙色点 */}
         {((updateStatus === UpdateStatus.HAS_UPDATE) || (hasUnreadUpdates && totalUpdates > 0)) && (
-          <div className='absolute top-[2px] right-[2px] w-2 h-2 bg-yellow-500 rounded-full'></div>
+          <div className='absolute top-[2px] right-[2px] w-2 h-2 bg-yellow-500 rounded-full animate-pulse shadow-lg shadow-yellow-500/50'></div>
         )}
       </div>
 

@@ -1,3 +1,4 @@
+/* eslint-disable unused-imports/no-unused-vars */
 /* eslint-disable no-console,@typescript-eslint/no-explicit-any */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -251,6 +252,8 @@ async function refreshRecordAndFavorites() {
                 save_time: record.save_time,
                 search_title: record.search_title,
                 strtype: '',
+                // 🔑 关键修复：保留原始集数，避免被Cron任务覆盖
+                original_episodes: record.original_episodes,
               });
               console.log(
                 `更新播放记录: ${record.title} (${record.total_episodes} -> ${episodeCount})`
