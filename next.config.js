@@ -12,7 +12,7 @@ const nextConfig = {
 
   experimental: {
     instrumentationHook: process.env.NODE_ENV === 'production',
-    optimizeCss: true,
+    optimizeCss: false,
     optimizeFonts: false,
   },
 
