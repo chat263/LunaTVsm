@@ -2,8 +2,8 @@
 
 'use client';
 
-import { Filter, Search } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronUp, Filter, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   getShortDramaCategories,
@@ -25,6 +25,10 @@ export default function ShortDramaPage() {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchMode, setIsSearchMode] = useState(false);
+  // 返回顶部按钮显示状态
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  // 用于防止分类切换时的闪烁
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const observer = useRef<IntersectionObserver>();
   const lastDramaElementRef = useCallback(
@@ -53,11 +57,46 @@ export default function ShortDramaPage() {
     fetchCategories();
   }, []);
 
+  // 监听滚动位置，控制返回顶部按钮显示
+  useEffect(() => {
+    // 获取滚动位置的函数 - 专门针对 body 滚动
+    const getScrollTop = () => {
+      return document.body.scrollTop || 0;
+    };
+
+    // 使用 requestAnimationFrame 持续检测滚动位置
+    let isRunning = false;
+    const checkScrollPosition = () => {
+      if (!isRunning) return;
+
+      const scrollTop = getScrollTop();
+      const shouldShow = scrollTop > 300;
+      setShowBackToTop(shouldShow);
+
+      requestAnimationFrame(checkScrollPosition);
+    };
+
+    // 启动持续检测
+    isRunning = true;
+    checkScrollPosition();
+
+    // 监听 body 元素的滚动事件
+    const handleScroll = () => {
+      const scrollTop = getScrollTop();
+      setShowBackToTop(scrollTop > 300);
+    };
+
+    document.body.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      isRunning = false;
+      document.body.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   // 加载短剧列表
   const loadDramas = useCallback(
     async (pageNum: number, reset = false) => {
-      if (!hasMore && !reset) return;
-
       setLoading(true);
       try {
         let result: { list: ShortDramaItem[]; hasMore: boolean };
@@ -69,6 +108,7 @@ export default function ShortDramaPage() {
 
         if (reset) {
           setDramas(result.list);
+          setIsInitialLoad(false);
         } else {
           setDramas((prev) => [...prev, ...result.list]);
         }
@@ -79,7 +119,7 @@ export default function ShortDramaPage() {
         setLoading(false);
       }
     },
-    [selectedCategory, searchQuery, isSearchMode, hasMore]
+    [selectedCategory, searchQuery, isSearchMode]
   );
 
   // 当分类变化时重新加载
@@ -89,14 +129,14 @@ export default function ShortDramaPage() {
       setHasMore(true);
       loadDramas(1, true);
     }
-  }, [selectedCategory, isSearchMode]);
+  }, [selectedCategory, isSearchMode, loadDramas]);
 
   // 当页码变化时加载更多
   useEffect(() => {
     if (page > 1) {
       loadDramas(page, false);
     }
-  }, [page]);
+  }, [page, loadDramas]);
 
   // 处理搜索
   const handleSearch = useCallback(
@@ -117,6 +157,20 @@ export default function ShortDramaPage() {
     },
     [loadDramas]
   );
+
+  // 返回顶部功能
+  const scrollToTop = () => {
+    try {
+      // 根据调试结果，真正的滚动容器是 document.body
+      document.body.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      });
+    } catch (error) {
+      // 如果平滑滚动完全失败，使用立即滚动
+      document.body.scrollTop = 0;
+    }
+  };
 
   return (
     <PageLayout activePath="/shortdrama">
@@ -147,31 +201,45 @@ export default function ShortDramaPage() {
           </div>
 
           {/* 分类筛选 */}
-          {!isSearchMode && (
+          {!isSearchMode && categories.length > 0 && (
             <div className="mb-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md">
+              <div className="flex items-center space-x-2.5 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
                   <Filter className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-base font-semibold text-gray-800 dark:text-gray-200">
+                <span className="text-base font-bold text-gray-900 dark:text-gray-100">
                   分类筛选
+                </span>
+                <div className="flex-1"></div>
+                <span className="text-xs px-2.5 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+                  {categories.length} 个分类
                 </span>
               </div>
               <div className="flex flex-wrap gap-2.5">
-                {categories.map((category) => (
+                {categories.map((category, index) => (
                   <button
                     key={category.type_id}
                     onClick={() => setSelectedCategory(category.type_id)}
-                    className={`relative rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-300 ${
+                    className={`group relative overflow-hidden rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-300 transform hover:scale-105 ${
                       selectedCategory === category.type_id
-                        ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 text-white shadow-lg shadow-purple-500/50 scale-105'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 hover:text-purple-700 hover:shadow-md dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-purple-300'
+                        ? 'bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/40'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-2 border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
                     }`}
+                    style={{
+                      animation: `fadeInUp 0.3s ease-out ${index * 0.03}s both`,
+                    }}
                   >
+                    {/* 激活状态的光泽效果 */}
                     {selectedCategory === category.type_id && (
-                      <div className="absolute inset-0 rounded-full bg-white/20 animate-ping"></div>
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                     )}
-                    <span className="relative">{category.type_name}</span>
+
+                    {/* 未激活状态的悬停背景 */}
+                    {selectedCategory !== category.type_id && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 dark:from-purple-900/20 dark:via-pink-900/20 dark:to-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    )}
+
+                    <span className="relative z-10">{category.type_name}</span>
                   </button>
                 ))}
               </div>
@@ -190,8 +258,8 @@ export default function ShortDramaPage() {
             ))}
           </div>
 
-          {/* 加载状态 */}
-          {loading && (
+          {/* 加载状态 - 只在首次加载或加载更多时显示骨架屏 */}
+          {loading && (isInitialLoad || page > 1) && (
             <div className="mt-8">
               <div className="flex justify-center mb-6">
                 <div className='flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200/50 dark:border-purple-700/50 shadow-md'>
@@ -299,6 +367,18 @@ export default function ShortDramaPage() {
           )}
         </div>
       </div>
+
+      {/* 返回顶部悬浮按钮 */}
+      <button
+        onClick={scrollToTop}
+        className={`fixed bottom-20 md:bottom-6 right-6 z-[500] w-12 h-12 bg-purple-500/90 hover:bg-purple-500 text-white rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center justify-center group ${showBackToTop
+          ? 'opacity-100 translate-y-0 pointer-events-auto'
+          : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}
+        aria-label='返回顶部'
+      >
+        <ChevronUp className='w-6 h-6 transition-transform group-hover:scale-110' />
+      </button>
     </PageLayout>
   );
 }

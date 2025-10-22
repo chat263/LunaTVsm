@@ -1462,7 +1462,10 @@ function PlayPageClient() {
     // 🔥 标记正在切换集数（只在非换源时）
     if (!isSourceChangingRef.current) {
       isEpisodeChangingRef.current = true;
-      console.log('🔄 开始切换集数，标记为集数变化');
+      // 🔑 立即重置 SkipController 触发标志，允许新集数自动跳过片头片尾
+      isSkipControllerTriggeredRef.current = false;
+      videoEndedHandledRef.current = false;
+      console.log('🔄 开始切换集数，重置自动跳过标志');
     }
 
     updateVideoUrl(detail, currentEpisodeIndex);
@@ -2129,9 +2132,13 @@ function PlayPageClient() {
     const d = detailRef.current;
     const idx = currentEpisodeIndexRef.current;
     if (d && d.episodes && idx < d.episodes.length - 1) {
-      if (artPlayerRef.current && !artPlayerRef.current.paused) {
-        saveCurrentPlayProgress();
-      }
+      // 🔥 关键修复：通过 SkipController 自动跳下一集时，不保存播放进度
+      // 因为此时的播放位置是片尾，用户并没有真正看到这个位置
+      // 如果保存了片尾的进度，下次"继续观看"会从片尾开始，导致进度错误
+      // if (artPlayerRef.current && !artPlayerRef.current.paused) {
+      //   saveCurrentPlayProgress();
+      // }
+
       // 🔑 标记通过 SkipController 触发了下一集
       isSkipControllerTriggeredRef.current = true;
       setCurrentEpisodeIndex(idx + 1);
@@ -2533,8 +2540,10 @@ function PlayPageClient() {
 
             // 🔥 重置集数切换标识
             if (isEpisodeChange) {
+              // 🔑 关键修复：切换集数后显式重置播放时间为 0，确保片头自动跳过能触发
+              artPlayerRef.current.currentTime = 0;
+              console.log('🎯 集数切换完成，重置播放时间为 0');
               isEpisodeChangingRef.current = false;
-              console.log('🎯 集数切换完成，重置标识');
             }
           }
         }).catch((error: any) => {
@@ -3520,7 +3529,16 @@ function PlayPageClient() {
 
       artPlayerRef.current.on('pause', () => {
         releaseWakeLock();
-        saveCurrentPlayProgress('pause');
+
+        // 🔥 关键修复：暂停时也检查是否在片尾，避免保存错误的进度
+        const currentTime = artPlayerRef.current?.currentTime || 0;
+        const duration = artPlayerRef.current?.duration || 0;
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (!isNearEnd) {
+          saveCurrentPlayProgress('pause');
+        }
       });
 
       artPlayerRef.current.on('video:ended', () => {
@@ -3727,14 +3745,30 @@ function PlayPageClient() {
         const interval = process.env.NEXT_PUBLIC_STORAGE_TYPE === 'upstash' ? 20000 : 10000; // 统一提高到10秒
         
         if (saveNow - lastSaveTimeRef.current > interval) {
+
+        // 🔥 关键修复：如果当前播放位置接近视频结尾（最后3分钟），不保存进度
+        // 这是为了避免自动跳过片尾时保存了片尾位置的进度，导致"继续观看"从错误位置开始
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (saveNow - lastSaveTimeRef.current > interval && !isNearEnd) {
           lastSaveTimeRef.current = saveNow;
           console.warn('save:'+saveNow);
-          saveCurrentPlayProgress();
+          saveCurrentPlayProgress('pause');
         }
+      }
       });
 
       artPlayerRef.current.on('pause', () => {
-        saveCurrentPlayProgress('pause');
+        // 🔥 关键修复：暂停时也检查是否在片尾，避免保存错误的进度
+        const currentTime = artPlayerRef.current?.currentTime || 0;
+        const duration = artPlayerRef.current?.duration || 0;
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (!isNearEnd) {
+          saveCurrentPlayProgress('pause');
+        }
       });
 
       if (artPlayerRef.current?.video) {
@@ -4119,6 +4153,7 @@ function PlayPageClient() {
                     source={currentSource}
                     id={currentId}
                     title={detail.title}
+                    episodeIndex={currentEpisodeIndex}
                     artPlayerRef={artPlayerRef}
                     currentTime={currentPlayTime}
                     duration={videoDuration}
