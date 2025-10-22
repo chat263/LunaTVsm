@@ -2656,7 +2656,7 @@ function PlayPageClient() {
               debug: false,
               enableWorker: true,
               // 参考 HLS.js config.ts：移动设备关闭低延迟模式以节省资源
-              lowLatencyMode: false,// !isMobile,
+              lowLatencyMode: false, // !isMobile,
               
               // 🎯 官方推荐的缓冲策略 - iOS13+ 特别优化
               /* 缓冲长度配置 - 参考 hlsDefaultConfig */
