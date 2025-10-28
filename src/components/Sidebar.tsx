@@ -165,6 +165,16 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
       label: '直播',
       href: '/live',
     },
+    {
+      icon: Radio,
+      label: '邮管',
+      href: '/searchyou',
+    },
+    {
+      icon: Radio,
+      label: '邮管1',
+      href: '/searchyou1',
+    },
   ]);
 
   useEffect(() => {
@@ -292,6 +302,8 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
                     { hover: 'hover:from-pink-50 hover:to-rose-50 dark:hover:from-pink-500/10 dark:hover:to-rose-500/10', active: 'data-[active=true]:from-pink-500/20 data-[active=true]:to-rose-500/20 dark:data-[active=true]:from-pink-500/15 dark:data-[active=true]:to-rose-500/15', text: 'hover:text-pink-600 data-[active=true]:text-pink-700 dark:hover:text-pink-400 dark:data-[active=true]:text-pink-400', icon: 'group-hover:text-pink-600 data-[active=true]:text-pink-700 dark:group-hover:text-pink-400 dark:data-[active=true]:text-pink-400', shadow: 'hover:shadow-pink-500/10 data-[active=true]:shadow-pink-500/20', border: 'from-pink-500 to-rose-500' }, // 动漫
                     { hover: 'hover:from-orange-50 hover:to-amber-50 dark:hover:from-orange-500/10 dark:hover:to-amber-500/10', active: 'data-[active=true]:from-orange-500/20 data-[active=true]:to-amber-500/20 dark:data-[active=true]:from-orange-500/15 dark:data-[active=true]:to-amber-500/15', text: 'hover:text-orange-600 data-[active=true]:text-orange-700 dark:hover:text-orange-400 dark:data-[active=true]:text-orange-400', icon: 'group-hover:text-orange-600 data-[active=true]:text-orange-700 dark:group-hover:text-orange-400 dark:data-[active=true]:text-orange-400', shadow: 'hover:shadow-orange-500/10 data-[active=true]:shadow-orange-500/20', border: 'from-orange-500 to-amber-500' }, // 综艺
                     { hover: 'hover:from-teal-50 hover:to-cyan-50 dark:hover:from-teal-500/10 dark:hover:to-cyan-500/10', active: 'data-[active=true]:from-teal-500/20 data-[active=true]:to-cyan-500/20 dark:data-[active=true]:from-teal-500/15 dark:data-[active=true]:to-cyan-500/15', text: 'hover:text-teal-600 data-[active=true]:text-teal-700 dark:hover:text-teal-400 dark:data-[active=true]:text-teal-400', icon: 'group-hover:text-teal-600 data-[active=true]:text-teal-700 dark:group-hover:text-teal-400 dark:data-[active=true]:text-teal-400', shadow: 'hover:shadow-teal-500/10 data-[active=true]:shadow-teal-500/20', border: 'from-teal-500 to-cyan-500' }, // 直播
+                    { hover: 'hover:from-teal-50 hover:to-cyan-50 dark:hover:from-teal-500/10 dark:hover:to-cyan-500/10', active: 'data-[active=true]:from-teal-500/20 data-[active=true]:to-cyan-500/20 dark:data-[active=true]:from-teal-500/15 dark:data-[active=true]:to-cyan-500/15', text: 'hover:text-teal-600 data-[active=true]:text-teal-700 dark:hover:text-teal-400 dark:data-[active=true]:text-teal-400', icon: 'group-hover:text-teal-600 data-[active=true]:text-teal-700 dark:group-hover:text-teal-400 dark:data-[active=true]:text-teal-400', shadow: 'hover:shadow-teal-500/10 data-[active=true]:shadow-teal-500/20', border: 'from-teal-500 to-cyan-500' },
+                    { hover: 'hover:from-teal-50 hover:to-cyan-50 dark:hover:from-teal-500/10 dark:hover:to-cyan-500/10', active: 'data-[active=true]:from-teal-500/20 data-[active=true]:to-cyan-500/20 dark:data-[active=true]:from-teal-500/15 dark:data-[active=true]:to-cyan-500/15', text: 'hover:text-teal-600 data-[active=true]:text-teal-700 dark:hover:text-teal-400 dark:data-[active=true]:text-teal-400', icon: 'group-hover:text-teal-600 data-[active=true]:text-teal-700 dark:group-hover:text-teal-400 dark:data-[active=true]:text-teal-400', shadow: 'hover:shadow-teal-500/10 data-[active=true]:shadow-teal-500/20', border: 'from-teal-500 to-cyan-500' },
                     { hover: 'hover:from-yellow-50 hover:to-amber-50 dark:hover:from-yellow-500/10 dark:hover:to-amber-500/10', active: 'data-[active=true]:from-yellow-500/20 data-[active=true]:to-amber-500/20 dark:data-[active=true]:from-yellow-500/15 dark:data-[active=true]:to-amber-500/15', text: 'hover:text-yellow-600 data-[active=true]:text-yellow-700 dark:hover:text-yellow-400 dark:data-[active=true]:text-yellow-400', icon: 'group-hover:text-yellow-600 data-[active=true]:text-yellow-700 dark:group-hover:text-yellow-400 dark:data-[active=true]:text-yellow-400', shadow: 'hover:shadow-yellow-500/10 data-[active=true]:shadow-yellow-500/20', border: 'from-yellow-500 to-amber-500' }, // 自定义
                   ];
 
