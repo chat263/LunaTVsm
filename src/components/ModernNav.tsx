@@ -91,6 +91,13 @@ export default function ModernNav() {
       color: 'text-teal-500',
       gradient: 'from-teal-500 to-cyan-500',
     },
+    {
+      icon: Radio,
+      label: '邮管',
+      href: '/searchyou',
+      color: 'text-teal-500',
+      gradient: 'from-teal-500 to-cyan-500',
+    },
   ]);
 
   useEffect(() => {
