@@ -8,12 +8,6 @@ const nextConfig = {
 
   reactStrictMode: false,
 
-<<<<<<< HEAD
-  experimental: {
-    instrumentationHook: process.env.NODE_ENV === 'production',
-    optimizeCss: false,
-    optimizeFonts: false,
-=======
   // Next.js 16 使用 Turbopack，配置 SVG 加载
   turbopack: {
     root: __dirname,
@@ -23,7 +17,6 @@ const nextConfig = {
         as: '*.js',
       },
     },
->>>>>>> sm/main
   },
 
   // Uncoment to add domain whitelist
