@@ -1,7 +1,7 @@
 /* eslint-disable unused-imports/no-unused-vars */
 /* eslint-disable unused-imports/no-unused-imports */
 /* eslint-disable simple-import-sort/imports */
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps, no-console, @next/next/no-img-element */
+/* @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps, no-console, @next/next/no-img-element */
 
 'use client';
 
@@ -2512,7 +2512,7 @@ function PlayPageClient() {
   // 播放记录相关
   // ---------------------------------------------------------------------------
   // 保存播放进度
-  // eslint-disable-next-line @typescript-eslint/no-inferrable-types
+  // eslint-disable-next-line 
   const saveCurrentPlayProgress = async (strtype: string = '') => {
     if (
       !artPlayerRef.current ||
@@ -3066,7 +3066,6 @@ function PlayPageClient() {
               debug: false,
               enableWorker: true,
               // 参考 HLS.js config.ts：移动设备关闭低延迟模式以节省资源
-<<<<<<< HEAD
               lowLatencyMode: false, // !isMobile,
               
               // 🎯 官方推荐的缓冲策略 - iOS13+ 特别优化
@@ -3077,27 +3076,20 @@ function PlayPageClient() {
               backBufferLength: isMobile 
                 ? (localIsIOS13 ? 5 : isIOS ? 8 : 10)   // iOS13+更保守
                 : Infinity, // 桌面使用无限回退缓冲
-=======
-              lowLatencyMode: !isMobile,
->>>>>>> sm/main
 
               // 🎯 官方推荐的缓冲策略 - iOS13+ 特别优化
               /* 缓冲长度配置 - 参考 hlsDefaultConfig - 桌面设备应用用户配置 */
-              maxBufferLength: isMobile
+              /* maxBufferLength: isMobile
                 ? (localIsIOS13 ? 8 : isIOS ? 10 : 15)  // iOS13+: 8s, iOS: 10s, Android: 15s
                 : bufferConfig.maxBufferLength, // 桌面使用用户配置
               backBufferLength: isMobile
                 ? (localIsIOS13 ? 5 : isIOS ? 8 : 10)   // iOS13+更保守
-                : bufferConfig.backBufferLength, // 桌面使用用户配置
+                : bufferConfig.backBufferLength, // 桌面使用用户配置 */
 
               /* 缓冲大小配置 - 基于官方 maxBufferSize - 桌面设备应用用户配置 */
               maxBufferSize: isMobile
                 ? (localIsIOS13 ? 20 * 1000 * 1000 : isIOS ? 30 * 1000 * 1000 : 40 * 1000 * 1000) // iOS13+: 20MB, iOS: 30MB, Android: 40MB
-<<<<<<< HEAD
                 : 600 * 1000 * 1000, // 桌面: 60MB (官方默认)
-=======
-                : bufferConfig.maxBufferSize, // 桌面使用用户配置
->>>>>>> sm/main
 
               /* 网络加载优化 - 参考 defaultLoadPolicy */
               maxLoadingDelay: isMobile ? (localIsIOS13 ? 2 : 3) : 4, // iOS13+设备更快超时
