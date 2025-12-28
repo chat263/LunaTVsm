@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取配置与存储
-    const adminConfig = await getConfig();
+    let adminConfig = await getConfig();
 
     // 判定操作者角色
     let operatorRole: 'owner' | 'admin';
@@ -127,6 +127,8 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+
+        // 使用 V1 注册用户
         await db.registerUser(targetUsername!, targetPassword);
 
         // 获取用户组信息
@@ -136,7 +138,7 @@ export async function POST(request: NextRequest) {
         const newUser: any = {
           username: targetUsername!,
           role: 'user',
-          createdAt: Date.now(), // 设置创建时间戳
+          createdAt: Date.now(),
         };
 
         // 如果指定了用户组，添加到tags中
