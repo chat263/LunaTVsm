@@ -6,7 +6,7 @@
 'use client';
 
 import Hls from 'hls.js';
-import { Heart, ChevronUp, Download } from 'lucide-react';
+import { Heart, ChevronUp, Download, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
@@ -14,6 +14,7 @@ import { useDownload } from '@/contexts/DownloadContext';
 import DownloadEpisodeSelector from '@/components/download/DownloadEpisodeSelector';
 import EpisodeSelector from '@/components/EpisodeSelector';
 import NetDiskSearchResults from '@/components/NetDiskSearchResults';
+import AcgSearch from '@/components/AcgSearch';
 import PageLayout from '@/components/PageLayout';
 import SkipController, { SkipSettingsButton } from '@/components/SkipController';
 import VideoCard from '@/components/VideoCard';
@@ -72,6 +73,14 @@ function PlayPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<SearchResult | null>(null);
 
+  // 测速进度状态
+  const [speedTestProgress, setSpeedTestProgress] = useState<{
+    current: number;
+    total: number;
+    currentSource: string;
+    result?: string;
+  } | null>(null);
+
   // 收藏状态
   const [favorited, setFavorited] = useState(false);
 
@@ -100,6 +109,11 @@ function PlayPageClient() {
   const [netdiskLoading, setNetdiskLoading] = useState(false);
   const [netdiskError, setNetdiskError] = useState<string | null>(null);
   const [netdiskTotal, setNetdiskTotal] = useState(0);
+  const [showNetdiskModal, setShowNetdiskModal] = useState(false);
+  const [netdiskResourceType, setNetdiskResourceType] = useState<'netdisk' | 'acg'>('netdisk'); // 资源类型
+
+  // ACG 动漫磁力搜索状态
+  const [acgTriggerSearch, setAcgTriggerSearch] = useState<boolean>();
 
   // 演员作品状态
   const [selectedCelebrityName, setSelectedCelebrityName] = useState<string | null>(null);
@@ -167,6 +181,7 @@ function PlayPageClient() {
   const anime4kEnabledRef = useRef(anime4kEnabled);
   const anime4kModeRef = useRef(anime4kMode);
   const anime4kScaleRef = useRef(anime4kScale);
+  const netdiskModalContentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     anime4kEnabledRef.current = anime4kEnabled;
     anime4kModeRef.current = anime4kMode;
@@ -247,6 +262,41 @@ function PlayPageClient() {
       setCurrentEpisodeIndex(newIndex);
     }
   }, [searchParams]);
+
+  // 重新加载触发器（用于触发 initAll 重新执行）
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+  const reloadFlagRef = useRef<string | null>(null);
+
+  // 监听 URL source/id 参数变化（观影室切换源同步）
+  useEffect(() => {
+    const newSource = searchParams.get('source') || '';
+    const newId = searchParams.get('id') || '';
+    const newIndex = parseInt(searchParams.get('index') || '0');
+    const newTime = parseInt(searchParams.get('t') || '0');
+    const reloadFlag = searchParams.get('_reload');
+
+    // 如果 source 或 id 变化，且有 _reload 标记，且不是已经处理过的reload
+    if (reloadFlag && reloadFlag !== reloadFlagRef.current && (newSource !== currentSource || newId !== currentId)) {
+      console.log('[PlayPage] URL source/id changed with reload flag, reloading:', { newSource, newId, newIndex, newTime });
+
+      // 标记此reload已处理
+      reloadFlagRef.current = reloadFlag;
+
+      // 重置所有相关状态（但保留 detail，让 initAll 重新加载后再更新）
+      setCurrentSource(newSource);
+      setCurrentId(newId);
+      setCurrentEpisodeIndex(newIndex);
+      // 不清空 detail，避免触发 videoUrl 清空导致黑屏
+      // setDetail(null);
+      setError(null);
+      setLoading(true);
+      setNeedPrefer(false);
+      setPlayerReady(false);
+
+      // 触发重新加载（通过更新 reloadTrigger 来触发 initAll 重新执行）
+      setReloadTrigger(prev => prev + 1);
+    }
+  }, [searchParams, currentSource, currentId]);
 
   // 换源相关状态
   const [availableSources, setAvailableSources] = useState<SearchResult[]>([]);
@@ -622,6 +672,10 @@ function PlayPageClient() {
     pendingOwnerChange,
     confirmFollowOwner,
     rejectFollowOwner,
+    showSourceSwitchDialog,
+    pendingOwnerState,
+    handleConfirmSourceSwitch,
+    handleCancelSourceSwitch,
   } = useWatchRoomSync({
     watchRoom,
     artPlayerRef,
@@ -630,8 +684,9 @@ function PlayPageClient() {
     playerReady,
     videoId: currentId,  // 传入URL参数的id
     currentSource: currentSource,  // 传入当前播放源
-    videoTitle: detail?.title || '',  // 传入视频标题
-    videoYear: detail?.year || '',  // 传入视频年份
+    videoTitle: videoTitle,  // 传入视频标题（来自 state，初始值来自 URL）
+    videoYear: videoYear,  // 传入视频年份（来自 state，初始值来自 URL）
+    videoDoubanId: videoDoubanId,  // 传入豆瓣ID
     searchTitle: searchTitle,  // 传入搜索标题
     setCurrentEpisodeIndex,  // 传入切换集数的函数
   });
@@ -748,7 +803,13 @@ function PlayPageClient() {
       }
     });
 
-    // 3. 移除数字变体处理（优化性能，依赖downstream相关性评分处理数字差异）
+    // 3. 添加数字变体处理（处理"第X季" <-> "X" 的转换）
+    const numberVariants = generateNumberVariants(trimmed);
+    numberVariants.forEach(variant => {
+      if (!variants.includes(variant)) {
+        variants.push(variant);
+      }
+    });
 
     // 如果包含空格，生成额外变体
     if (trimmed.includes(' ')) {
@@ -803,6 +864,56 @@ function PlayPageClient() {
 
     // 去重并返回
     return Array.from(new Set(variants));
+  };
+
+  /**
+   * 生成数字变体的搜索变体（处理"第X季" <-> "X"的转换）
+   * 优化：只生成最有可能匹配的前2-3个变体
+   * @param query 原始查询
+   * @returns 数字变体数组（按优先级排序）
+   */
+  const generateNumberVariants = (query: string): string[] => {
+    const variants: string[] = [];
+
+    // 中文数字到阿拉伯数字的映射
+    const chineseNumbers: { [key: string]: string } = {
+      '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
+      '六': '6', '七': '7', '八': '8', '九': '9', '十': '10',
+    };
+
+    // 1. 处理"第X季/部/集"格式（最常见的情况）
+    const seasonPattern = /第([一二三四五六七八九十\d]+)(季|部|集|期)/;
+    const match = seasonPattern.exec(query);
+
+    if (match) {
+      const fullMatch = match[0];
+      const number = match[1];
+      const suffix = match[2];
+      const arabicNumber = chineseNumbers[number] || number;
+      const base = query.replace(fullMatch, '').trim();
+
+      if (base) {
+        // 只生成最常见的格式：无空格，如"一拳超人3"
+        // 不生成"一拳超人 3"和"一拳超人S3"等变体，避免匹配太多不相关结果
+        variants.push(`${base}${arabicNumber}`);
+      }
+    }
+
+    // 2. 处理末尾纯数字（如"牧神记3"）
+    const endNumberMatch = query.match(/^(.+?)\s*(\d+)$/);
+    if (endNumberMatch) {
+      const base = endNumberMatch[1].trim();
+      const number = endNumberMatch[2];
+      const chineseNum = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'][parseInt(number)];
+
+      if (chineseNum && parseInt(number) <= 10) {
+        // 只生成无空格带"第X季"的变体，如"牧神记第三季"
+        variants.push(`${base}第${chineseNum}季`);
+      }
+    }
+
+    // 限制返回前1个最有可能的变体
+    return variants.slice(0, 1);
   };
 
   // 移除数字变体生成函数（优化性能，依赖相关性评分处理）
@@ -1110,19 +1221,53 @@ function PlayPageClient() {
   // 完整测速（桌面设备）
   const fullSpeedTest = async (sources: SearchResult[]): Promise<SearchResult> => {
     // 桌面设备使用小批量并发，避免创建过多实例
-    const concurrency = 2;
+    const concurrency = 3;
+    // 限制最大测试数量为20个源（平衡速度和覆盖率）
+    const maxTestCount = 20;
+    const topPriorityCount = 5; // 前5个优先级最高的源
+
+    // 🎯 混合策略：前5个 + 随机15个
+    let sourcesToTest: SearchResult[];
+    if (sources.length <= maxTestCount) {
+      // 如果源总数不超过20个，全部测试
+      sourcesToTest = sources;
+    } else {
+      // 保留前5个（搜索结果通常已按相关性/质量排序）
+      const prioritySources = sources.slice(0, topPriorityCount);
+
+      // 从剩余源中随机选择15个
+      const remainingSources = sources.slice(topPriorityCount);
+      const shuffled = remainingSources.sort(() => 0.5 - Math.random());
+      const randomSources = shuffled.slice(0, maxTestCount - topPriorityCount);
+
+      sourcesToTest = [...prioritySources, ...randomSources];
+    }
+
+    console.log(`开始测速: 共${sources.length}个源，将测试前${topPriorityCount}个 + 随机${sourcesToTest.length - Math.min(topPriorityCount, sources.length)}个 = ${sourcesToTest.length}个`);
+
     const allResults: Array<{
       source: SearchResult;
       testResult: { quality: string; loadSpeed: string; pingTime: number };
     } | null> = [];
 
-    for (let i = 0; i < sources.length; i += concurrency) {
-      const batch = sources.slice(i, i + concurrency);
-      console.log(`测速批次 ${Math.floor(i/concurrency) + 1}/${Math.ceil(sources.length/concurrency)}: ${batch.length} 个源`);
-      
+    let shouldStop = false; // 早停标志
+    let testedCount = 0; // 已测试数量
+
+    for (let i = 0; i < sourcesToTest.length && !shouldStop; i += concurrency) {
+      const batch = sourcesToTest.slice(i, i + concurrency);
+      console.log(`测速批次 ${Math.floor(i/concurrency) + 1}/${Math.ceil(sourcesToTest.length/concurrency)}: ${batch.length} 个源`);
+
       const batchResults = await Promise.all(
-        batch.map(async (source) => {
+        batch.map(async (source, batchIndex) => {
           try {
+            // 更新进度：显示当前正在测试的源
+            const currentIndex = i + batchIndex + 1;
+            setSpeedTestProgress({
+              current: currentIndex,
+              total: sourcesToTest.length,
+              currentSource: source.source_name,
+            });
+
             if (!source.episodes || source.episodes.length === 0) {
               return null;
             }
@@ -1130,21 +1275,63 @@ function PlayPageClient() {
             const episodeUrl = source.episodes.length > 1
               ? source.episodes[1]
               : source.episodes[0];
-            
+
             const testResult = await getVideoResolutionFromM3u8(episodeUrl);
+
+            // 更新进度：显示测试结果
+            setSpeedTestProgress({
+              current: currentIndex,
+              total: sourcesToTest.length,
+              currentSource: source.source_name,
+              result: `${testResult.quality} | ${testResult.loadSpeed} | ${testResult.pingTime}ms`,
+            });
+
             return { source, testResult };
           } catch (error) {
             console.warn(`测速失败: ${source.source_name}`, error);
+
+            // 更新进度：显示失败
+            const currentIndex = i + batchIndex + 1;
+            setSpeedTestProgress({
+              current: currentIndex,
+              total: sourcesToTest.length,
+              currentSource: source.source_name,
+              result: '测速失败',
+            });
+
             return null;
           }
         })
       );
-      
+
       allResults.push(...batchResults);
-      
-      // 批次间延迟，让资源有时间清理
-      if (i + concurrency < sources.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      testedCount += batch.length;
+
+      // 🎯 保守策略早停判断：找到高质量源
+      const successfulInBatch = batchResults.filter(Boolean) as Array<{
+        source: SearchResult;
+        testResult: { quality: string; loadSpeed: string; pingTime: number };
+      }>;
+
+      for (const result of successfulInBatch) {
+        const { quality, loadSpeed } = result.testResult;
+        const speedMatch = loadSpeed.match(/^([\d.]+)\s*MB\/s$/);
+        const speedMBps = speedMatch ? parseFloat(speedMatch[1]) : 0;
+
+        // 🛑 保守策略：只有非常优质的源才早停
+        const is4KHighSpeed = quality === '4K' && speedMBps >= 8;
+        const is2KHighSpeed = quality === '2K' && speedMBps >= 6;
+
+        if (is4KHighSpeed || is2KHighSpeed) {
+          console.log(`✓ 找到顶级优质源: ${result.source.source_name} (${quality}, ${loadSpeed})，停止测速`);
+          shouldStop = true;
+          break;
+        }
+      }
+
+      // 批次间延迟，让资源有时间清理（减少延迟时间）
+      if (i + concurrency < sourcesToTest.length && !shouldStop) {
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
@@ -1229,6 +1416,9 @@ function PlayPageClient() {
         }, ${result.testResult.pingTime}ms)`
       );
     });
+
+    // 清除测速进度状态
+    setSpeedTestProgress(null);
 
     return resultsWithScore[0].source;
   };
@@ -2393,11 +2583,12 @@ function PlayPageClient() {
 
           console.log(`匹配结果: ${relevantMatches.length}/${allCandidates.length}`);
 
-          const maxResults = isEnglishQuery ? 5 : 20; // 英文更严格控制结果数
-          if (relevantMatches.length > 0 && relevantMatches.length <= maxResults) {
+          // 如果有匹配结果，直接返回（去重）
+          if (relevantMatches.length > 0) {
             finalResults = Array.from(
               new Map(relevantMatches.map(item => [`${item.source}-${item.id}`, item])).values()
             ) as SearchResult[];
+            console.log(`找到 ${finalResults.length} 个唯一匹配结果`);
           } else {
             console.log('没有找到合理的匹配，返回空结果');
             finalResults = [];
@@ -2539,7 +2730,7 @@ function PlayPageClient() {
     };
 
     initAll();
-  }, []);
+  }, [reloadTrigger]); // 添加 reloadTrigger 作为依赖，当它变化时重新执行 initAll
 
   // 播放记录处理
   useEffect(() => {
@@ -2658,22 +2849,31 @@ function PlayPageClient() {
         return;
       }
 
-      // 尝试跳转到当前正在播放的集数
+      // 🔥 换源时保持当前集数不变（除非新源集数不够）
       let targetIndex = currentEpisodeIndex;
 
-      // 如果当前集数超出新源的范围，则跳转到第一集
-      if (!newDetail.episodes || targetIndex >= newDetail.episodes.length) {
-        targetIndex = 0;
+      // 只有当新源的集数不够时才调整到最后一集或第一集
+      if (newDetail.episodes && newDetail.episodes.length > 0) {
+        if (targetIndex >= newDetail.episodes.length) {
+          // 当前集数超出新源范围，跳转到新源的最后一集
+          targetIndex = newDetail.episodes.length - 1;
+          console.log(`⚠️ 当前集数(${currentEpisodeIndex})超出新源范围(${newDetail.episodes.length}集)，跳转到第${targetIndex + 1}集`);
+        } else {
+          // 集数在范围内，保持不变
+          console.log(`✅ 换源保持当前集数: 第${targetIndex + 1}集`);
+        }
       }
 
       // 如果仍然是同一集数且播放进度有效，则在播放器就绪后恢复到原始进度
       if (targetIndex !== currentEpisodeIndex) {
         resumeTimeRef.current = 0;
+        console.log(`🔄 换源后集数变化: ${currentEpisodeIndex + 1} -> ${targetIndex + 1}，重置播放进度`);
       } else if (
         (!resumeTimeRef.current || resumeTimeRef.current === 0) &&
         currentPlayTime > 1
       ) {
         resumeTimeRef.current = currentPlayTime;
+        console.log(`💾 换源保持播放进度: ${currentPlayTime.toFixed(2)}s`);
       }
 
       // 更新URL参数（不刷新页面）
@@ -2681,6 +2881,7 @@ function PlayPageClient() {
       newUrl.searchParams.set('source', newSource);
       newUrl.searchParams.set('id', newId);
       newUrl.searchParams.set('year', newDetail.year);
+      newUrl.searchParams.set('index', targetIndex.toString());  // 🔥 同步URL的index参数
       window.history.replaceState({}, '', newUrl.toString());
 
       setVideoTitle(newDetail.title || newTitle);
@@ -2691,7 +2892,12 @@ function PlayPageClient() {
       setCurrentSource(newSource);
       setCurrentId(newId);
       setDetail(newDetail);
-      setCurrentEpisodeIndex(targetIndex);
+
+      // 🔥 只有当集数确实改变时才调用 setCurrentEpisodeIndex
+      // 这样可以避免触发不必要的 useEffect 和集数切换逻辑
+      if (targetIndex !== currentEpisodeIndex) {
+        setCurrentEpisodeIndex(targetIndex);
+      }
 
       // 🚀 换源完成后，优化弹幕加载流程
       setTimeout(async () => {
@@ -2997,6 +3203,7 @@ function PlayPageClient() {
         search_title: searchTitle,
         strtype: strtype,
         remarks: remarksToSave, // 优先使用搜索结果的 remarks，因为详情接口可能没有
+        douban_id: videoDoubanIdRef.current || detailRef.current?.douban_id || undefined, // 添加豆瓣ID
       });
 
       lastSaveTimeRef.current = Date.now();
@@ -4917,7 +5124,7 @@ function PlayPageClient() {
           <div className='text-center max-w-md mx-auto px-6'>
             {/* 动画影院图标 */}
             <div className='relative mb-8'>
-              <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+              <div className='relative mx-auto w-24 h-24 bg-linear-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
                 <div className='text-white text-4xl'>
                   {loadingStage === 'searching' && '🔍'}
                   {loadingStage === 'preferring' && '⚡'}
@@ -4925,7 +5132,7 @@ function PlayPageClient() {
                   {loadingStage === 'ready' && '✨'}
                 </div>
                 {/* 旋转光环 */}
-                <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
+                <div className='absolute -inset-2 bg-linear-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
               </div>
 
               {/* 浮动粒子效果 */}
@@ -4973,7 +5180,7 @@ function PlayPageClient() {
               {/* 进度条 */}
               <div className='w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden'>
                 <div
-                  className='h-full bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000 ease-out'
+                  className='h-full bg-linear-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000 ease-out'
                   style={{
                     width:
                       loadingStage === 'searching' ||
@@ -4992,6 +5199,70 @@ function PlayPageClient() {
               <p className='text-xl font-semibold text-gray-800 dark:text-gray-200 animate-pulse'>
                 {loadingMessage}
               </p>
+
+              {/* Netflix风格测速进度显示 */}
+              {speedTestProgress && (
+                <div className='mt-6 space-y-3'>
+                  {/* 进度条容器 */}
+                  <div className='relative w-full'>
+                    {/* 背景进度条 */}
+                    <div className='h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden'>
+                      {/* 动态进度条 - Netflix红色 */}
+                      <div
+                        className='h-full bg-gradient-to-r from-red-600 to-red-500 rounded-full transition-all duration-300 ease-out relative overflow-hidden'
+                        style={{
+                          width: `${(speedTestProgress.current / speedTestProgress.total) * 100}%`,
+                        }}
+                      >
+                        {/* 闪烁效果 */}
+                        <div className='absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer'></div>
+                      </div>
+                    </div>
+
+                    {/* 进度数字 - 靠右显示 */}
+                    <div className='absolute -top-6 right-0 text-xs font-medium text-gray-500 dark:text-gray-400'>
+                      {speedTestProgress.current}/{speedTestProgress.total}
+                    </div>
+                  </div>
+
+                  {/* 当前测试源信息卡片 */}
+                  <div className='bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-200 dark:border-gray-700'>
+                    <div className='flex items-center gap-2'>
+                      {/* 脉动指示器 */}
+                      <div className='relative'>
+                        <div className='w-2 h-2 bg-red-500 rounded-full animate-pulse'></div>
+                        <div className='absolute inset-0 w-2 h-2 bg-red-500 rounded-full animate-ping'></div>
+                      </div>
+
+                      {/* 源名称 */}
+                      <span className='text-sm font-semibold text-gray-700 dark:text-gray-300 truncate flex-1'>
+                        {speedTestProgress.currentSource}
+                      </span>
+                    </div>
+
+                    {/* 测试结果 */}
+                    {speedTestProgress.result && (
+                      <div className='mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 font-mono'>
+                        {speedTestProgress.result === '测速失败' ? (
+                          <span className='text-red-500 flex items-center gap-1'>
+                            <svg className='w-3 h-3' fill='currentColor' viewBox='0 0 20 20'>
+                              <path fillRule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z' clipRule='evenodd' />
+                            </svg>
+                            连接失败
+                          </span>
+                        ) : (
+                          <span className='text-green-600 dark:text-green-400 flex items-center gap-1'>
+                            <svg className='w-3 h-3' fill='currentColor' viewBox='0 0 20 20'>
+                              <path fillRule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' clipRule='evenodd' />
+                            </svg>
+                            {speedTestProgress.result}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5006,10 +5277,10 @@ function PlayPageClient() {
           <div className='text-center max-w-md mx-auto px-6'>
             {/* 错误图标 */}
             <div className='relative mb-8'>
-              <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+              <div className='relative mx-auto w-24 h-24 bg-linear-to-r from-red-500 to-orange-500 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
                 <div className='text-white text-4xl'>😵</div>
                 {/* 脉冲效果 */}
-                <div className='absolute -inset-2 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl opacity-20 animate-pulse'></div>
+                <div className='absolute -inset-2 bg-linear-to-r from-red-500 to-orange-500 rounded-2xl opacity-20 animate-pulse'></div>
               </div>
 
               {/* 浮动错误粒子 */}
@@ -5049,7 +5320,7 @@ function PlayPageClient() {
                     ? router.push(`/search?q=${encodeURIComponent(videoTitle)}`)
                     : router.back()
                 }
-                className='w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl'
+                className='w-full px-6 py-3 bg-linear-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl'
               >
                 {videoTitle ? '🔍 返回搜索' : '← 返回上页'}
               </button>
@@ -5085,19 +5356,92 @@ function PlayPageClient() {
         {/* 第二行：播放器和选集 */}
         <div className='space-y-2'>
           {/* 折叠控制 */}
-          <div className='flex justify-end items-center'>
+          <div className='flex justify-end items-center gap-2 sm:gap-3'>
+            {/* 网盘资源按钮 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // 触发网盘搜索（如果还没搜索过）
+                if (!netdiskResults && !netdiskLoading && videoTitle) {
+                  handleNetDiskSearch(videoTitle);
+                }
+                // 打开网盘模态框
+                setShowNetdiskModal(true);
+              }}
+              className='flex group relative items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] rounded-2xl bg-linear-to-br from-white/90 via-white/80 to-white/70 hover:from-white hover:via-white/95 hover:to-white/90 dark:from-gray-800/90 dark:via-gray-800/80 dark:to-gray-800/70 dark:hover:from-gray-800 dark:hover:via-gray-800/95 dark:hover:to-gray-800/90 backdrop-blur-md border border-white/60 dark:border-gray-700/60 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.25)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.3)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.15)] hover:scale-105 active:scale-95 transition-all duration-300 overflow-hidden'
+              title='网盘资源'
+            >
+              <div className='absolute inset-0 bg-linear-to-r from-transparent via-white/0 to-transparent group-hover:via-white/30 dark:group-hover:via-white/10 transition-all duration-500'></div>
+              <span className='relative z-10 text-sm sm:text-base'>📁</span>
+              <span className='relative z-10 hidden sm:inline text-xs font-medium text-gray-600 dark:text-gray-300'>
+                {netdiskLoading ? (
+                  <span className='flex items-center gap-1'>
+                    <span className='inline-block h-3 w-3 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin'></span>
+                    搜索中
+                  </span>
+                ) : netdiskTotal > 0 ? (
+                  `网盘 (${netdiskTotal})`
+                ) : (
+                  '网盘'
+                )}
+              </span>
+
+              {/* 状态指示点 */}
+              {netdiskTotal > 0 && (
+                <div className='absolute -top-0.5 -right-0.5 z-20'>
+                  <div className='relative'>
+                    <div className='absolute inset-0 bg-blue-400 rounded-full blur-sm opacity-75 animate-pulse'></div>
+                    <div className='relative w-2 h-2 rounded-full bg-linear-to-br from-blue-400 to-blue-500 shadow-lg'></div>
+                  </div>
+                </div>
+              )}
+            </button>
+
+            {/* 下载按钮 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDownloadEpisodeSelector(true);
+              }}
+              className='flex group relative items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] rounded-2xl bg-linear-to-br from-white/90 via-white/80 to-white/70 hover:from-white hover:via-white/95 hover:to-white/90 dark:from-gray-800/90 dark:via-gray-800/80 dark:to-gray-800/70 dark:hover:from-gray-800 dark:hover:via-gray-800/95 dark:hover:to-gray-800/90 backdrop-blur-md border border-white/60 dark:border-gray-700/60 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.25)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.3)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.15)] hover:scale-105 active:scale-95 transition-all duration-300 overflow-hidden'
+              title='下载视频'
+            >
+              <div className='absolute inset-0 bg-linear-to-r from-transparent via-white/0 to-transparent group-hover:via-white/30 dark:group-hover:via-white/10 transition-all duration-500'></div>
+              <Download className='relative z-10 w-3.5 sm:w-4 h-3.5 sm:h-4 text-gray-600 dark:text-gray-400' />
+              <span className='relative z-10 hidden sm:inline text-xs font-medium text-gray-600 dark:text-gray-300'>
+                下载
+              </span>
+            </button>
+
+            {/* 下载管理按钮 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDownloadPanel(true);
+              }}
+              className='flex group relative items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 min-h-[40px] sm:min-h-[44px] rounded-2xl bg-linear-to-br from-white/90 via-white/80 to-white/70 hover:from-white hover:via-white/95 hover:to-white/90 dark:from-gray-800/90 dark:via-gray-800/80 dark:to-gray-800/70 dark:hover:from-gray-800 dark:hover:via-gray-800/95 dark:hover:to-gray-800/90 backdrop-blur-md border border-white/60 dark:border-gray-700/60 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.25)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.3)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.15)] hover:scale-105 active:scale-95 transition-all duration-300 overflow-hidden'
+              title='下载管理'
+            >
+              <div className='absolute inset-0 bg-linear-to-r from-transparent via-white/0 to-transparent group-hover:via-white/30 dark:group-hover:via-white/10 transition-all duration-500'></div>
+              <span className='relative z-10 text-sm sm:text-base'>📥</span>
+              <span className='relative z-10 hidden sm:inline text-xs font-medium text-gray-600 dark:text-gray-300'>
+                管理
+              </span>
+            </button>
+
             {/* 折叠控制按钮 - 仅在 lg 及以上屏幕显示 */}
             <button
               onClick={() =>
                 setIsEpisodeSelectorCollapsed(!isEpisodeSelectorCollapsed)
               }
-              className='hidden lg:flex group relative items-center space-x-1.5 px-3 py-1.5 rounded-full bg-white/80 hover:bg-white dark:bg-gray-800/80 dark:hover:bg-gray-800 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 shadow-sm hover:shadow-md transition-all duration-200'
+              className='hidden lg:flex group relative items-center gap-2 px-4 py-2 min-h-[44px] rounded-2xl bg-linear-to-br from-white/90 via-white/80 to-white/70 hover:from-white hover:via-white/95 hover:to-white/90 dark:from-gray-800/90 dark:via-gray-800/80 dark:to-gray-800/70 dark:hover:from-gray-800 dark:hover:via-gray-800/95 dark:hover:to-gray-800/90 backdrop-blur-md border border-white/60 dark:border-gray-700/60 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.25)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.3)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.15)] hover:scale-105 active:scale-95 transition-all duration-300 overflow-hidden'
               title={
                 isEpisodeSelectorCollapsed ? '显示选集面板' : '隐藏选集面板'
               }
             >
+              <div className='absolute inset-0 bg-linear-to-r from-transparent via-white/0 to-transparent group-hover:via-white/30 dark:group-hover:via-white/10 transition-all duration-500'></div>
               <svg
-                className={`w-3.5 h-3.5 text-gray-500 dark:text-gray-400 transition-transform duration-200 ${isEpisodeSelectorCollapsed ? 'rotate-180' : 'rotate-0'
+                className={`relative z-10 w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-200 ${isEpisodeSelectorCollapsed ? 'rotate-180' : 'rotate-0'
                   }`}
                 fill='none'
                 stroke='currentColor'
@@ -5110,17 +5454,17 @@ function PlayPageClient() {
                   d='M9 5l7 7-7 7'
                 />
               </svg>
-              <span className='text-xs font-medium text-gray-600 dark:text-gray-300'>
+              <span className='relative z-10 text-xs font-medium text-gray-600 dark:text-gray-300'>
                 {isEpisodeSelectorCollapsed ? '显示' : '隐藏'}
               </span>
 
               {/* 精致的状态指示点 */}
-              <div
-                className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full transition-all duration-200 ${isEpisodeSelectorCollapsed
-                  ? 'bg-orange-400 animate-pulse'
-                  : 'bg-green-400'
-                  }`}
-              ></div>
+              <div className='absolute -top-0.5 -right-0.5 z-20'>
+                <div className='relative'>
+                  <div className={`absolute inset-0 rounded-full blur-sm opacity-75 ${isEpisodeSelectorCollapsed ? 'bg-orange-400 animate-pulse' : 'bg-green-400'}`}></div>
+                  <div className={`relative w-2 h-2 rounded-full shadow-lg ${isEpisodeSelectorCollapsed ? 'bg-linear-to-br from-orange-400 to-orange-500' : 'bg-linear-to-br from-green-400 to-green-500'}`}></div>
+                </div>
+              </div>
             </button>
           </div>
 
@@ -5191,14 +5535,14 @@ function PlayPageClient() {
 
                 {/* 换源加载蒙层 */}
                 {isVideoLoading && (
-                  <div className='absolute inset-0 bg-black/85 backdrop-blur-sm rounded-xl flex items-center justify-center z-[500] transition-all duration-300'>
+                  <div className='absolute inset-0 bg-black/85 backdrop-blur-sm rounded-xl flex items-center justify-center z-500 transition-all duration-300'>
                     <div className='text-center max-w-md mx-auto px-6'>
                       {/* 动画影院图标 */}
                       <div className='relative mb-8'>
-                        <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+                        <div className='relative mx-auto w-24 h-24 bg-linear-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
                           <div className='text-white text-4xl'>🎬</div>
                           {/* 旋转光环 */}
-                          <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
+                          <div className='absolute -inset-2 bg-linear-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
                         </div>
 
                         {/* 浮动粒子效果 */}
@@ -5278,9 +5622,9 @@ function PlayPageClient() {
           <div className='md:col-span-3'>
             <div className='p-6 flex flex-col min-h-0'>
               {/* 标题 */}
-              <div className='mb-4 flex-shrink-0'>
+              <div className='mb-4 shrink-0'>
                 <div className='flex flex-col md:flex-row md:items-center gap-3'>
-                  <h1 className='text-2xl md:text-3xl font-bold tracking-wide text-center md:text-left bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-gray-100 dark:via-gray-200 dark:to-gray-100 bg-clip-text text-transparent'>
+                  <h1 className='text-2xl md:text-3xl font-bold tracking-wide text-center md:text-left bg-linear-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-gray-100 dark:via-gray-200 dark:to-gray-100 bg-clip-text text-transparent'>
                     {videoTitle || '影片标题'}
                   </h1>
 
@@ -5292,81 +5636,17 @@ function PlayPageClient() {
                         e.stopPropagation();
                         handleToggleFavorite();
                       }}
-                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-110'
+                      className='group relative shrink-0 transition-all duration-300 hover:scale-110'
                     >
-                      <div className='absolute inset-0 bg-gradient-to-r from-red-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur-lg transition-opacity duration-300'></div>
+                      <div className='absolute inset-0 bg-linear-to-r from-red-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur-lg transition-opacity duration-300'></div>
                       <FavoriteIcon filled={favorited} />
-                    </button>
-
-                    {/* 网盘资源按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // 触发网盘搜索（如果还没搜索过）
-                        if (!netdiskResults && !netdiskLoading && videoTitle) {
-                          handleNetDiskSearch(videoTitle);
-                        }
-                        // 滚动到网盘区域
-                        setTimeout(() => {
-                          const element = document.getElementById('netdisk-section');
-                          if (element) {
-                            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }
-                        }, 100);
-                      }}
-                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                    >
-                      <div className='absolute inset-0 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                      <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                        📁
-                        {netdiskLoading ? (
-                          <span className='flex items-center gap-1'>
-                            <span className='inline-block h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
-                            搜索中...
-                          </span>
-                        ) : netdiskTotal > 0 ? (
-                          <span>{netdiskTotal}个资源</span>
-                        ) : (
-                          <span>网盘资源</span>
-                        )}
-                      </div>
-                    </button>
-
-                    {/* 下载按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDownloadEpisodeSelector(true);
-                      }}
-                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                    >
-                      <div className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                      <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                        <Download className='h-4 w-4' />
-                        <span>下载</span>
-                      </div>
-                    </button>
-
-                    {/* 查看下载按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDownloadPanel(true);
-                      }}
-                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                    >
-                      <div className='absolute inset-0 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                      <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                        📥
-                        <span>下载管理</span>
-                      </div>
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* 关键信息行 */}
-              <div className='flex flex-wrap items-center gap-3 text-base mb-4 opacity-80 flex-shrink-0'>
+              <div className='flex flex-wrap items-center gap-3 text-base mb-4 opacity-80 shrink-0'>
                 {detail?.class && String(detail.class) !== '0' && (
                   <span className='text-green-600 font-semibold'>
                     {detail.class}
@@ -5385,7 +5665,7 @@ function PlayPageClient() {
 
               {/* 详细信息（豆瓣或bangumi） */}
               {currentSource !== 'shortdrama' && videoDoubanId !== 0 && detail && detail.source !== 'shortdrama' && (
-                <div className='mb-4 flex-shrink-0'>
+                <div className='mb-4 shrink-0'>
                   {/* 加载状态 */}
                   {(loadingMovieDetails || loadingBangumiDetails) && !movieDetails && !bangumiDetails && (
                     <div className='animate-pulse'>
@@ -5402,7 +5682,7 @@ function PlayPageClient() {
                         <div className='flex items-center gap-2'>
                           <span className='font-semibold text-gray-700 dark:text-gray-300'>Bangumi评分: </span>
                           <div className='flex items-center group'>
-                            <span className='relative text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-rose-600 to-pink-600 dark:from-pink-400 dark:via-rose-400 dark:to-pink-400 font-bold text-lg transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_2px_8px_rgba(236,72,153,0.5)]'>
+                            <span className='relative text-transparent bg-clip-text bg-linear-to-r from-pink-600 via-rose-600 to-pink-600 dark:from-pink-400 dark:via-rose-400 dark:to-pink-400 font-bold text-lg transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_2px_8px_rgba(236,72,153,0.5)]'>
                               {bangumiDetails.rating.score}
                             </span>
                             <div className='flex ml-2 gap-0.5'>
@@ -5460,14 +5740,14 @@ function PlayPageClient() {
                       {/* 标签信息 */}
                       <div className='flex flex-wrap gap-2 mt-3'>
                         {bangumiDetails.tags && bangumiDetails.tags.slice(0, 4).map((tag: any, index: number) => (
-                          <span key={index} className='relative group bg-gradient-to-r from-blue-500/90 to-indigo-500/90 dark:from-blue-600/90 dark:to-indigo-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span key={index} className='relative group bg-linear-to-r from-blue-500/90 to-indigo-500/90 dark:from-blue-600/90 dark:to-indigo-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-blue-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>{tag.name}</span>
                           </span>
                         ))}
                         {bangumiDetails.total_episodes && (
-                          <span className='relative group bg-gradient-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span className='relative group bg-linear-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>共{bangumiDetails.total_episodes}话</span>
                           </span>
                         )}
@@ -5483,7 +5763,7 @@ function PlayPageClient() {
                         <div className='flex items-center gap-2'>
                           <span className='font-semibold text-gray-700 dark:text-gray-300'>豆瓣评分: </span>
                           <div className='flex items-center group'>
-                            <span className='relative text-transparent bg-clip-text bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 dark:from-yellow-400 dark:via-amber-400 dark:to-yellow-400 font-bold text-lg transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_2px_8px_rgba(251,191,36,0.5)]'>
+                            <span className='relative text-transparent bg-clip-text bg-linear-to-r from-yellow-600 via-amber-600 to-yellow-600 dark:from-yellow-400 dark:via-amber-400 dark:to-yellow-400 font-bold text-lg transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_2px_8px_rgba(251,191,36,0.5)]'>
                               {movieDetails.rate}
                             </span>
                             <div className='flex ml-2 gap-0.5'>
@@ -5552,32 +5832,32 @@ function PlayPageClient() {
                       {/* 标签信息 */}
                       <div className='flex flex-wrap gap-2 mt-3'>
                         {movieDetails.countries && movieDetails.countries.slice(0, 2).map((country: string, index: number) => (
-                          <span key={index} className='relative group bg-gradient-to-r from-blue-500/90 to-cyan-500/90 dark:from-blue-600/90 dark:to-cyan-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span key={index} className='relative group bg-linear-to-r from-blue-500/90 to-cyan-500/90 dark:from-blue-600/90 dark:to-cyan-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-blue-400 to-cyan-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>{country}</span>
                           </span>
                         ))}
                         {movieDetails.languages && movieDetails.languages.slice(0, 2).map((language: string, index: number) => (
-                          <span key={index} className='relative group bg-gradient-to-r from-purple-500/90 to-pink-500/90 dark:from-purple-600/90 dark:to-pink-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span key={index} className='relative group bg-linear-to-r from-purple-500/90 to-pink-500/90 dark:from-purple-600/90 dark:to-pink-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-purple-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>{language}</span>
                           </span>
                         ))}
                         {movieDetails.episodes && (
-                          <span className='relative group bg-gradient-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span className='relative group bg-linear-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>共{movieDetails.episodes}集</span>
                           </span>
                         )}
                         {movieDetails.episode_length && (
-                          <span className='relative group bg-gradient-to-r from-orange-500/90 to-amber-500/90 dark:from-orange-600/90 dark:to-amber-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-orange-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-orange-400 to-amber-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span className='relative group bg-linear-to-r from-orange-500/90 to-amber-500/90 dark:from-orange-600/90 dark:to-amber-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-orange-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-orange-400 to-amber-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>单集{movieDetails.episode_length}分钟</span>
                           </span>
                         )}
                         {movieDetails.movie_duration && (
-                          <span className='relative group bg-gradient-to-r from-red-500/90 to-rose-500/90 dark:from-red-600/90 dark:to-rose-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-red-500/30 transition-all duration-300 hover:scale-105'>
-                            <span className='absolute inset-0 bg-gradient-to-r from-red-400 to-rose-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                          <span className='relative group bg-linear-to-r from-red-500/90 to-rose-500/90 dark:from-red-600/90 dark:to-rose-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-red-500/30 transition-all duration-300 hover:scale-105'>
+                            <span className='absolute inset-0 bg-linear-to-r from-red-400 to-rose-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                             <span className='relative'>{movieDetails.movie_duration}分钟</span>
                           </span>
                         )}
@@ -5589,22 +5869,22 @@ function PlayPageClient() {
 
               {/* 短剧详细信息 */}
               {(detail?.source === 'shortdrama' || shortdramaDetails) && (
-                <div className='mb-4 flex-shrink-0'>
+                <div className='mb-4 shrink-0'>
                   <div className='space-y-2 text-sm'>
                     {/* 集数信息 */}
                     {((detail?.source === 'shortdrama' && detail?.episodes && detail.episodes.length > 0) ||
                       (shortdramaDetails?.episodes && shortdramaDetails.episodes.length > 0)) && (
                       <div className='flex flex-wrap gap-2'>
-                        <span className='relative group bg-gradient-to-r from-blue-500/90 to-indigo-500/90 dark:from-blue-600/90 dark:to-indigo-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
-                          <span className='absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                        <span className='relative group bg-linear-to-r from-blue-500/90 to-indigo-500/90 dark:from-blue-600/90 dark:to-indigo-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 hover:scale-105'>
+                          <span className='absolute inset-0 bg-linear-to-r from-blue-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                           <span className='relative'>共{(shortdramaDetails?.episodes || detail?.episodes)?.length}集</span>
                         </span>
-                        <span className='relative group bg-gradient-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
-                          <span className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                        <span className='relative group bg-linear-to-r from-green-500/90 to-emerald-500/90 dark:from-green-600/90 dark:to-emerald-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-105'>
+                          <span className='absolute inset-0 bg-linear-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                           <span className='relative'>短剧</span>
                         </span>
-                        <span className='relative group bg-gradient-to-r from-purple-500/90 to-pink-500/90 dark:from-purple-600/90 dark:to-pink-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 hover:scale-105'>
-                          <span className='absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
+                        <span className='relative group bg-linear-to-r from-purple-500/90 to-pink-500/90 dark:from-purple-600/90 dark:to-pink-600/90 text-white px-3 py-1 rounded-full text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 hover:scale-105'>
+                          <span className='absolute inset-0 bg-linear-to-r from-purple-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-20 blur transition-opacity duration-300'></span>
                           <span className='relative'>{shortdramaDetails?.year || detail?.year}年</span>
                         </span>
                       </div>
@@ -5639,7 +5919,7 @@ function PlayPageClient() {
                   {/* 演员 */}
                   {shortdramaDetails.metadata.author && (
                     <div className='flex items-start gap-2'>
-                      <span className='text-gray-600 dark:text-gray-400 flex-shrink-0'>🎭 演员:</span>
+                      <span className='text-gray-600 dark:text-gray-400 shrink-0'>🎭 演员:</span>
                       <span className='text-gray-800 dark:text-gray-200'>
                         {shortdramaDetails.metadata.author}
                       </span>
@@ -5660,7 +5940,7 @@ function PlayPageClient() {
                       <div
                         key={celebrity.id}
                         onClick={() => handleCelebrityClick(celebrity.name)}
-                        className='flex-shrink-0 text-center group cursor-pointer'
+                        className='shrink-0 text-center group cursor-pointer'
                       >
                         <div className='w-20 h-20 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 mb-2 ring-2 ring-transparent group-hover:ring-blue-500 transition-all duration-300 group-hover:scale-110 shadow-md group-hover:shadow-xl'>
                           <img
@@ -5933,7 +6213,7 @@ function PlayPageClient() {
                       >
                         <div className='flex items-start gap-3'>
                           {/* 用户头像 */}
-                          <div className='flex-shrink-0'>
+                          <div className='shrink-0'>
                             {comment.avatar ? (
                               <img
                                 src={comment.avatar}
@@ -6020,43 +6300,6 @@ function PlayPageClient() {
                 </div>
               )}
 
-              {/* 网盘资源区域 */}
-              <div id="netdisk-section" className='mt-6'>
-                <div className='border-t border-gray-200 dark:border-gray-700 pt-6'>
-                  <div className='mb-4'>
-                    <h3 className='text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2'>
-                      📁 网盘资源
-                      {netdiskLoading && (
-                        <span className='inline-block align-middle'>
-                          <span className='inline-block h-4 w-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin'></span>
-                        </span>
-                      )}
-                      {netdiskTotal > 0 && (
-                        <span className='inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'>
-                          {netdiskTotal} 个资源
-                        </span>
-                      )}
-                    </h3>
-                    {videoTitle && !netdiskLoading && !netdiskResults && (
-                      <p className='text-sm text-gray-500 dark:text-gray-400 mt-2'>
-                        点击上方"📁 网盘资源"按钮开始搜索
-                      </p>
-                    )}
-                    {videoTitle && !netdiskLoading && (netdiskResults || netdiskError) && (
-                      <p className='text-sm text-gray-500 dark:text-gray-400 mt-2'>
-                        搜索关键词：{videoTitle}
-                      </p>
-                    )}
-                  </div>
-                  
-                  <NetDiskSearchResults
-                    results={netdiskResults}
-                    loading={netdiskLoading}
-                    error={netdiskError}
-                    total={netdiskTotal}
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
@@ -6083,7 +6326,7 @@ function PlayPageClient() {
                     />
 
                     {/* 悬浮遮罩 */}
-                    <div className='absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500'></div>
+                    <div className='absolute inset-0 bg-linear-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500'></div>
 
                     {/* 链接按钮（bangumi或豆瓣） */}
                     {videoDoubanId !== 0 && (
@@ -6097,7 +6340,7 @@ function PlayPageClient() {
                         rel='noopener noreferrer'
                         className='absolute top-3 left-3 z-20'
                       >
-                        <div className={`relative ${bangumiDetails ? 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600' : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'} text-white text-xs font-bold w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 ease-out hover:scale-110 group/link`}>
+                        <div className={`relative ${bangumiDetails ? 'bg-linear-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600' : 'bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'} text-white text-xs font-bold w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 ease-out hover:scale-110 group/link`}>
                           <div className={`absolute inset-0 ${bangumiDetails ? 'bg-pink-400' : 'bg-green-400'} rounded-full opacity-0 group-hover/link:opacity-30 blur transition-opacity duration-300`}></div>
                           <svg
                             width='18'
@@ -6131,7 +6374,7 @@ function PlayPageClient() {
       {/* 返回顶部悬浮按钮 */}
       <button
         onClick={scrollToTop}
-        className={`fixed z-[500] w-12 h-12 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center justify-center group relative overflow-hidden ${
+        className={`fixed z-500 w-12 h-12 rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center justify-center group relative overflow-hidden ${
           showBackToTop
             ? 'opacity-100 translate-y-0 pointer-events-auto'
             : 'opacity-0 translate-y-4 pointer-events-none'
@@ -6145,10 +6388,10 @@ function PlayPageClient() {
         aria-label='返回顶部'
       >
         {/* 渐变背景 */}
-        <div className='absolute inset-0 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 group-hover:from-green-600 group-hover:via-emerald-600 group-hover:to-teal-600 transition-all duration-300'></div>
+        <div className='absolute inset-0 bg-linear-to-r from-green-500 via-emerald-500 to-teal-500 group-hover:from-green-600 group-hover:via-emerald-600 group-hover:to-teal-600 transition-all duration-300'></div>
 
         {/* 发光效果 */}
-        <div className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 opacity-0 group-hover:opacity-50 blur-md transition-all duration-300'></div>
+        <div className='absolute inset-0 bg-linear-to-r from-green-400 to-emerald-400 opacity-0 group-hover:opacity-50 blur-md transition-all duration-300'></div>
 
         {/* 脉冲光环 */}
         <div className='absolute inset-0 rounded-full border-2 border-white/30 animate-ping group-hover:opacity-0 transition-opacity duration-300'></div>
@@ -6158,7 +6401,7 @@ function PlayPageClient() {
 
       {/* 观影室同步暂停提示条 */}
       {isInWatchRoom && !isWatchRoomOwner && syncPaused && !pendingOwnerChange && (
-        <div className='fixed bottom-20 left-1/2 -translate-x-1/2 z-[9998] animate-fade-in'>
+        <div className='fixed bottom-20 left-1/2 -translate-x-1/2 z-9998 animate-fade-in'>
           <div className='flex items-center gap-3 px-4 py-2.5 rounded-full bg-orange-500/90 backdrop-blur-sm shadow-lg'>
             <span className='text-sm text-white font-medium'>已退出同步，自由观看中</span>
             <button
@@ -6171,9 +6414,53 @@ function PlayPageClient() {
         </div>
       )}
 
+      {/* 源切换确认对话框 */}
+      {showSourceSwitchDialog && pendingOwnerState && (
+        <div className='fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-9999'>
+          <div className='bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm mx-4 shadow-2xl'>
+            <div className='text-center'>
+              <div className='w-12 h-12 mx-auto mb-4 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center'>
+                <svg className='w-6 h-6 text-yellow-500' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' />
+                </svg>
+              </div>
+              <h3 className='text-lg font-semibold text-gray-900 dark:text-white mb-2'>
+                播放源不同
+              </h3>
+              <p className='text-sm text-gray-500 dark:text-gray-400 mb-3'>
+                房主使用的播放源与您不同，是否切换到房主的播放源？
+              </p>
+              <p className='text-base font-medium text-gray-900 dark:text-white mb-1'>
+                房主播放源
+              </p>
+              <p className='text-sm text-blue-500 dark:text-blue-400 mb-3 font-mono'>
+                {pendingOwnerState.source}
+              </p>
+              <p className='text-xs text-orange-500 dark:text-orange-400 mb-6'>
+                ⚠️ 保持当前源将无法与房主同步进度
+              </p>
+              <div className='flex gap-3'>
+                <button
+                  onClick={handleCancelSourceSwitch}
+                  className='flex-1 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium'
+                >
+                  保持当前源
+                </button>
+                <button
+                  onClick={handleConfirmSourceSwitch}
+                  className='flex-1 px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium'
+                >
+                  切换源
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 房主切换视频/集数确认框 */}
       {pendingOwnerChange && (
-        <div className='fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]'>
+        <div className='fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-9999'>
           <div className='bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm mx-4 shadow-2xl'>
             <div className='text-center'>
               <div className='w-12 h-12 mx-auto mb-4 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center'>
@@ -6212,6 +6499,162 @@ function PlayPageClient() {
         </div>
       )}
       </PageLayout>
+
+      {/* 网盘资源模态框 */}
+      {showNetdiskModal && (
+        <div
+          className='fixed inset-0 z-9999 bg-black/50 flex items-end md:items-center justify-center p-0 md:p-4'
+          onClick={() => setShowNetdiskModal(false)}
+        >
+          <div
+            className='bg-white dark:bg-gray-800 rounded-t-2xl md:rounded-2xl w-full md:max-w-4xl max-h-[85vh] md:max-h-[90vh] flex flex-col shadow-2xl'
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 头部 - Fixed */}
+            <div className='shrink-0 border-b border-gray-200 dark:border-gray-700 p-4 sm:p-6'>
+              <div className='flex items-center justify-between mb-3'>
+                <div className='flex items-center gap-2 sm:gap-3'>
+                  <div className='text-2xl sm:text-3xl'>📁</div>
+                  <div>
+                    <h3 className='text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-200'>
+                      资源搜索
+                    </h3>
+                    {videoTitle && (
+                      <p className='text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5'>
+                        搜索关键词：{videoTitle}
+                      </p>
+                    )}
+                  </div>
+                  {netdiskLoading && netdiskResourceType === 'netdisk' && (
+                    <span className='inline-block ml-2'>
+                      <span className='inline-block h-4 w-4 sm:h-5 sm:w-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin'></span>
+                    </span>
+                  )}
+                  {netdiskTotal > 0 && netdiskResourceType === 'netdisk' && (
+                    <span className='inline-flex items-center px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 ml-2'>
+                      {netdiskTotal} 个资源
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowNetdiskModal(false)}
+                  className='rounded-lg p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors active:scale-95'
+                  aria-label='关闭'
+                >
+                  <X className='h-5 w-5 sm:h-6 sm:w-6 text-gray-500' />
+                </button>
+              </div>
+
+              {/* 资源类型切换器 - 仅当是动漫时显示 */}
+              {(() => {
+                const isAnime = detail?.type_name?.toLowerCase().includes('动漫') ||
+                               detail?.type_name?.toLowerCase().includes('动画') ||
+                               detail?.type_name?.toLowerCase().includes('anime');
+
+                return isAnime && (
+                  <div className='flex items-center gap-2'>
+                    <span className='text-xs sm:text-sm text-gray-600 dark:text-gray-400'>资源类型：</span>
+                    <div className='flex gap-2'>
+                      <button
+                        onClick={() => {
+                          setNetdiskResourceType('netdisk');
+                          setNetdiskResults(null);
+                          setNetdiskError(null);
+                        }}
+                        className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg border transition-all ${
+                          netdiskResourceType === 'netdisk'
+                            ? 'bg-blue-500 text-white border-blue-500 shadow-md'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        💾 网盘资源
+                      </button>
+                      <button
+                        onClick={() => {
+                          setNetdiskResourceType('acg');
+                          setNetdiskResults(null);
+                          setNetdiskError(null);
+                          if (videoTitle) {
+                            setAcgTriggerSearch(prev => !prev);
+                          }
+                        }}
+                        className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg border transition-all ${
+                          netdiskResourceType === 'acg'
+                            ? 'bg-purple-500 text-white border-purple-500 shadow-md'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        🎌 动漫磁力
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 内容区 - Scrollable */}
+            <div ref={netdiskModalContentRef} className='flex-1 overflow-y-auto p-4 sm:p-6 relative'>
+              {/* 根据资源类型显示不同的内容 */}
+              {netdiskResourceType === 'netdisk' ? (
+                <>
+                  {videoTitle && !netdiskLoading && !netdiskResults && !netdiskError && (
+                    <div className='flex flex-col items-center justify-center py-12 sm:py-16 text-center'>
+                      <div className='text-5xl sm:text-6xl mb-4'>📁</div>
+                      <p className='text-sm sm:text-base text-gray-600 dark:text-gray-400'>
+                        点击搜索按钮开始查找网盘资源
+                      </p>
+                      <button
+                        onClick={() => handleNetDiskSearch(videoTitle)}
+                        disabled={netdiskLoading}
+                        className='mt-4 px-4 sm:px-6 py-2 sm:py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 text-sm sm:text-base font-medium'
+                      >
+                        开始搜索
+                      </button>
+                    </div>
+                  )}
+
+                  <NetDiskSearchResults
+                    results={netdiskResults}
+                    loading={netdiskLoading}
+                    error={netdiskError}
+                    total={netdiskTotal}
+                  />
+
+                </>
+              ) : (
+                /* ACG 动漫磁力搜索 */
+                <AcgSearch
+                  keyword={videoTitle || ''}
+                  triggerSearch={acgTriggerSearch}
+                  onError={(error) => console.error('ACG搜索失败:', error)}
+                />
+              )}
+
+              {/* 返回顶部按钮 - 统一放在外层，适用于所有资源类型 */}
+              {((netdiskResourceType === 'netdisk' && netdiskTotal > 10) ||
+                (netdiskResourceType === 'acg')) && (
+                <button
+                  onClick={() => {
+                    if (netdiskModalContentRef.current) {
+                      netdiskModalContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className={`sticky bottom-6 left-full -ml-14 sm:bottom-8 sm:-ml-16 w-11 h-11 sm:w-12 sm:h-12 ${
+                    netdiskResourceType === 'acg'
+                      ? 'bg-purple-500 hover:bg-purple-600'
+                      : 'bg-blue-500 hover:bg-blue-600'
+                  } text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center active:scale-95 z-50 group`}
+                  aria-label='返回顶部'
+                >
+                  <svg className='w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-y-[-2px] transition-transform' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M5 10l7-7m0 0l7 7m-7-7v18' />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 下载选集面板 */}
       <DownloadEpisodeSelector
@@ -6296,8 +6739,17 @@ export default function PlayPage() {
   return (
     <>
       <Suspense fallback={<div>Loading...</div>}>
-        <PlayPageClient />
+        <PlayPageClientWrapper />
       </Suspense>
     </>
   );
+}
+
+function PlayPageClientWrapper() {
+  const searchParams = useSearchParams();
+  // 使用 source + id 作为 key，强制在切换源时重新挂载组件
+  // 参考：https://github.com/vercel/next.js/issues/2819
+  const key = `${searchParams.get('source')}-${searchParams.get('id')}-${searchParams.get('_reload') || ''}`;
+
+  return <PlayPageClient key={key} />;
 }

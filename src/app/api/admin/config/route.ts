@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 
+import { revalidatePath } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { AdminConfig, AdminConfigResult } from '@/lib/admin.types';
@@ -91,14 +92,28 @@ export async function POST(request: NextRequest) {
 
   try {
     const newConfig: AdminConfig = await request.json();
-    
+
     // 保存新配置
     await db.saveAdminConfig(newConfig);
-    
+
     // 清除缓存，强制下次重新从数据库读取
     clearConfigCache();
-    
-    return NextResponse.json({ success: true });
+
+    // 🔥 刷新所有页面的缓存，使新配置立即生效（无需重启Docker）
+    revalidatePath('/', 'layout');
+
+    // 🔥 添加 no-cache headers，防止 Docker 环境下 Next.js Router Cache 问题
+    // 参考：https://github.com/vercel/next.js/issues/61184
+    return NextResponse.json(
+      { success: true },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
   } catch (error) {
     console.error('保存管理员配置失败:', error);
     return NextResponse.json(

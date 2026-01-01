@@ -15,6 +15,7 @@ export interface PlayRecord {
   search_title: string; // 搜索时使用的标题
   strtype: string;
   remarks?: string; // 备注信息（如"已完结"、"更新至20集"等）
+  douban_id?: number; // 豆瓣ID（用于准确识别视频）
 }
 
 // 收藏数据结构
@@ -216,6 +217,9 @@ export interface DoubanItem {
   movie_duration?: number;
   first_aired?: string;
   plot_summary?: string;
+  // 🎬 Netflix风格字段
+  backdrop?: string;      // 高清背景图（用于HeroBanner）
+  trailerUrl?: string;    // 预告片视频URL
 }
 
 export interface DoubanResult {
