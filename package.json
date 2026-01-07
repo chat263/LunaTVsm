@@ -3,8 +3,9 @@
   "version": "5.9.2",
   "private": true,
   "scripts": {
+    "clean": "next clean",
     "dev": "npm run gen:manifest && next dev -H 0.0.0.0",
-    "build": "npm run gen:manifest && next build",
+    "build": "npm run clean && npm run gen:manifest && next build",
     "buildnext": "next build",
     "start": "next start",
     "lint": "next lint",
