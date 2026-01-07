@@ -767,7 +767,7 @@ function PlayPageClient() {
     }
 
     try {
-      const response = await fetch(`https://api.bgm.tv/v0/subjects/${bangumiId}`);
+      const response = await fetch(`/api/proxy/bangumi?path=v0/subjects/${bangumiId}`);
       if (response.ok) {
         const bangumiData = await response.json();
         
@@ -2738,6 +2738,21 @@ function PlayPageClient() {
     const initFromHistory = async () => {
       if (!currentSource || !currentId) return;
 
+      // 🔥 关键修复：优先检查 sessionStorage 中的临时进度（换源时保存的）
+      const tempProgressKey = `temp_progress_${currentSource}_${currentId}_${currentEpisodeIndex}`;
+      const tempProgress = sessionStorage.getItem(tempProgressKey);
+
+      if (tempProgress) {
+        const savedTime = parseFloat(tempProgress);
+        if (savedTime > 1) {
+          resumeTimeRef.current = savedTime;
+          console.log(`🎯 从 sessionStorage 恢复换源前的播放进度: ${savedTime.toFixed(2)}s`);
+          // 立即清除临时进度，避免重复恢复
+          sessionStorage.removeItem(tempProgressKey);
+          return; // 优先使用临时进度，不再读取历史记录
+        }
+      }
+
       try {
         const allRecords = await getAllPlayRecords();
         const key = generateStorageKey(currentSource, currentId);
@@ -2828,6 +2843,14 @@ function PlayPageClient() {
       const currentPlayTime = artPlayerRef.current?.currentTime || 0;
       console.log('换源前当前播放时间:', currentPlayTime);
 
+      // 🔥 关键修复：将播放进度保存到 sessionStorage，防止组件重新挂载时丢失
+      // 使用临时的 key，在新组件挂载后立即读取并清除
+      if (currentPlayTime > 1) {
+        const tempProgressKey = `temp_progress_${newSource}_${newId}_${currentEpisodeIndex}`;
+        sessionStorage.setItem(tempProgressKey, currentPlayTime.toString());
+        console.log(`💾 已保存临时播放进度到 sessionStorage: ${tempProgressKey} = ${currentPlayTime.toFixed(2)}s`);
+      }
+
       // 清除前一个历史记录
       if (currentSourceRef.current && currentIdRef.current) {
         try {
@@ -2858,23 +2881,17 @@ function PlayPageClient() {
           // 当前集数超出新源范围，跳转到新源的最后一集
           targetIndex = newDetail.episodes.length - 1;
           console.log(`⚠️ 当前集数(${currentEpisodeIndex})超出新源范围(${newDetail.episodes.length}集)，跳转到第${targetIndex + 1}集`);
+          // 🔥 集数变化时，清除保存的临时进度
+          const tempProgressKey = `temp_progress_${newSource}_${newId}_${currentEpisodeIndex}`;
+          sessionStorage.removeItem(tempProgressKey);
         } else {
           // 集数在范围内，保持不变
           console.log(`✅ 换源保持当前集数: 第${targetIndex + 1}集`);
         }
       }
 
-      // 如果仍然是同一集数且播放进度有效，则在播放器就绪后恢复到原始进度
-      if (targetIndex !== currentEpisodeIndex) {
-        resumeTimeRef.current = 0;
-        console.log(`🔄 换源后集数变化: ${currentEpisodeIndex + 1} -> ${targetIndex + 1}，重置播放进度`);
-      } else if (
-        (!resumeTimeRef.current || resumeTimeRef.current === 0) &&
-        currentPlayTime > 1
-      ) {
-        resumeTimeRef.current = currentPlayTime;
-        console.log(`💾 换源保持播放进度: ${currentPlayTime.toFixed(2)}s`);
-      }
+      // 🔥 由于组件会重新挂载，不再需要设置 resumeTimeRef（进度已保存到 sessionStorage）
+      // 组件重新挂载后会自动从 sessionStorage 恢复进度
 
       // 更新URL参数（不刷新页面）
       const newUrl = new URL(window.location.href);

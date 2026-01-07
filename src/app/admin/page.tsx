@@ -422,6 +422,9 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
   const [deletingUser, setDeletingUser] = useState<string | null>(null);
 
+  // 用户组筛选状态
+  const [filterUserGroup, setFilterUserGroup] = useState<string>('all');
+
   // 🔑 TVBox Token 管理状态
   const [showTVBoxTokenModal, setShowTVBoxTokenModal] = useState(false);
   const [tvboxTokenUser, setTVBoxTokenUser] = useState<{
@@ -615,9 +618,28 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
     role: 'user' | 'admin' | 'owner';
     enabledApis?: string[];
     showAdultContent?: boolean;
+    tags?: string[];
   }) => {
     setSelectedUser(user);
-    setSelectedApis(user.enabledApis || []);
+
+    // 计算用户的所有有效 API（个人 + 用户组）
+    const userApis = user.enabledApis || [];
+    const tagApis: string[] = [];
+
+    // 从用户组获取 API 权限
+    if (user.tags && user.tags.length > 0) {
+      user.tags.forEach(tagName => {
+        const tag = config.UserConfig.Tags?.find(t => t.name === tagName);
+        if (tag && tag.enabledApis) {
+          tagApis.push(...tag.enabledApis);
+        }
+      });
+    }
+
+    // 合并去重
+    const allApis = [...new Set([...userApis, ...tagApis])];
+
+    setSelectedApis(allApis);
     setSelectedShowAdultContent(user.showAdultContent || false);
     setShowConfigureApisModal(true);
   };
@@ -1017,6 +1039,99 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                 </span>
               </div>
             </div>
+
+            {/* 默认用户组设置 */}
+            <div className='mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'>
+              <div className='mb-3'>
+                <div className='font-medium text-gray-900 dark:text-gray-100 mb-1'>
+                  默认用户组
+                </div>
+                <div className='text-sm text-gray-600 dark:text-gray-400'>
+                  新注册用户将自动加入以下分组（不选择则默认无限制访问所有源）
+                </div>
+              </div>
+
+              {config.UserConfig.Tags && config.UserConfig.Tags.length > 0 ? (
+                <div className='space-y-2'>
+                  {config.UserConfig.Tags.map(tag => (
+                    <label
+                      key={tag.name}
+                      className='flex items-center p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md cursor-pointer transition-colors'
+                    >
+                      <input
+                        type="checkbox"
+                        checked={config.SiteConfig.DefaultUserTags?.includes(tag.name) || false}
+                        onChange={async (e) => {
+                          const isChecked = e.target.checked;
+                          const tagName = tag.name;
+
+                          await withLoading('toggleDefaultTag', async () => {
+                            try {
+                              const currentTags = config.SiteConfig.DefaultUserTags || [];
+                              const newTags = isChecked
+                                ? [...currentTags, tagName]
+                                : currentTags.filter(t => t !== tagName);
+
+                              const response = await fetch('/api/admin/config', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  ...config,
+                                  SiteConfig: {
+                                    ...config.SiteConfig,
+                                    DefaultUserTags: newTags.length > 0 ? newTags : undefined
+                                  }
+                                })
+                              });
+
+                              if (response.ok) {
+                                await refreshConfig();
+                                showAlert({
+                                  type: 'success',
+                                  title: '设置已更新',
+                                  message: isChecked
+                                    ? `已添加默认分组：${tagName}`
+                                    : `已移除默认分组：${tagName}`,
+                                  timer: 2000
+                                });
+                              } else {
+                                throw new Error('更新失败');
+                              }
+                            } catch (err) {
+                              showAlert({
+                                type: 'error',
+                                title: '更新失败',
+                                message: err instanceof Error ? err.message : '未知错误'
+                              });
+                            }
+                          });
+                        }}
+                        className='h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded'
+                      />
+                      <span className='ml-3 text-sm font-medium text-gray-900 dark:text-gray-100'>
+                        {tag.name}
+                      </span>
+                      <span className='ml-2 text-xs text-gray-500 dark:text-gray-400'>
+                        ({tag.enabledApis.length} 个源
+                        {tag.showAdultContent !== undefined && (tag.showAdultContent ? ', 包含成人内容' : ', 过滤成人内容')})
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className='text-sm text-gray-500 dark:text-gray-400 italic'>
+                  暂无可用的用户组，请先在下方"用户组管理"中创建用户组
+                </div>
+              )}
+
+              {config.SiteConfig.DefaultUserTags && config.SiteConfig.DefaultUserTags.length > 0 && (
+                <div className='mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800'>
+                  <div className='text-xs text-blue-700 dark:text-blue-300'>
+                    💡 已选择 {config.SiteConfig.DefaultUserTags.length} 个默认分组，新用户将获得这些分组的权限并集
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1132,9 +1247,25 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       {/* 用户列表 */}
       <div>
         <div className='flex items-center justify-between mb-3'>
-          <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
-            用户列表
-          </h4>
+          <div className='flex items-center space-x-3'>
+            <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+              用户列表
+            </h4>
+            {/* 用户组筛选下拉框 */}
+            <select
+              value={filterUserGroup}
+              onChange={(e) => setFilterUserGroup(e.target.value)}
+              className='px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+            >
+              <option value='all'>全部用户</option>
+              <option value='none'>无用户组</option>
+              {userGroups.map((group) => (
+                <option key={group.name} value={group.name}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className='flex items-center space-x-2'>
             {/* 批量操作按钮 */}
             {selectedUsers.size > 0 && (
@@ -1344,16 +1475,27 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
             </thead>
             {/* 按规则排序用户：自己 -> 站长(若非自己) -> 管理员 -> 其他 */}
             {(() => {
-              const sortedUsers = [...config.UserConfig.Users].sort((a, b) => {
-                type UserInfo = (typeof config.UserConfig.Users)[number];
-                const priority = (u: UserInfo) => {
-                  if (u.username === currentUsername) return 0;
-                  if (u.role === 'owner') return 1;
-                  if (u.role === 'admin') return 2;
-                  return 3;
-                };
-                return priority(a) - priority(b);
-              });
+              const sortedUsers = [...config.UserConfig.Users]
+                .sort((a, b) => {
+                  type UserInfo = (typeof config.UserConfig.Users)[number];
+                  const priority = (u: UserInfo) => {
+                    if (u.username === currentUsername) return 0;
+                    if (u.role === 'owner') return 1;
+                    if (u.role === 'admin') return 2;
+                    return 3;
+                  };
+                  return priority(a) - priority(b);
+                })
+                .filter((user) => {
+                  // 根据选择的用户组筛选用户
+                  if (filterUserGroup === 'all') {
+                    return true; // 显示所有用户
+                  } else if (filterUserGroup === 'none') {
+                    return !user.tags || user.tags.length === 0; // 显示无用户组的用户
+                  } else {
+                    return user.tags && user.tags.includes(filterUserGroup); // 显示包含指定用户组的用户
+                  }
+                });
               return (
                 <tbody className='divide-y divide-gray-200 dark:divide-gray-700'>
                   {sortedUsers.map((user) => {
@@ -1450,9 +1592,29 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                         <td className='px-6 py-4 whitespace-nowrap'>
                           <div className='flex items-center space-x-2'>
                             <span className='text-sm text-gray-900 dark:text-gray-100'>
-                              {user.enabledApis && user.enabledApis.length > 0
-                                ? `${user.enabledApis.length} 个源`
-                                : '无限制'}
+                              {(() => {
+                                // 计算用户的有效 API 权限
+                                const userApis = user.enabledApis || [];
+                                const tagApis: string[] = [];
+
+                                // 从用户组获取 API 权限
+                                if (user.tags && user.tags.length > 0) {
+                                  user.tags.forEach(tagName => {
+                                    const tag = config.UserConfig.Tags?.find(t => t.name === tagName);
+                                    if (tag && tag.enabledApis) {
+                                      tagApis.push(...tag.enabledApis);
+                                    }
+                                  });
+                                }
+
+                                // 合并去重
+                                const allApis = [...new Set([...userApis, ...tagApis])];
+
+                                if (allApis.length > 0) {
+                                  return `${allApis.length} 个源`;
+                                }
+                                return '无限制';
+                              })()}
                             </span>
                             {/* 配置采集源权限按钮 */}
                             {(role === 'owner' ||
@@ -2573,6 +2735,20 @@ const VideoSourceConfig = ({
     from: 'config',
   });
 
+  // 🔑 普通视频源代理配置
+  const [videoProxySettings, setVideoProxySettings] = useState({
+    enabled: false,
+    proxyUrl: 'https://corsapi.smone.workers.dev'
+  });
+
+  // 代理状态检测
+  const [proxyStatus, setProxyStatus] = useState<{
+    healthy: boolean;
+    responseTime?: number;
+    error?: string;
+    lastCheck?: string;
+  } | null>(null);
+
   // 批量操作相关状态
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
 
@@ -2652,6 +2828,14 @@ const VideoSourceConfig = ({
       // 重置选择状态
       setSelectedSources(new Set());
     }
+
+    // 加载普通视频源代理配置
+    if (config?.VideoProxyConfig) {
+      setVideoProxySettings({
+        enabled: config.VideoProxyConfig.enabled ?? false,
+        proxyUrl: config.VideoProxyConfig.proxyUrl || 'https://corsapi.smone.workers.dev'
+      });
+    }
   }, [config]);
 
   // 通用 API 请求
@@ -2695,6 +2879,97 @@ const VideoSourceConfig = ({
     withLoading(`toggleAdult_${key}`, () => callSourceApi({ action: 'update_adult', key, is_adult })).catch(() => {
       console.error('操作失败', 'update_adult', key);
     });
+  };
+
+  // 保存普通视频源代理配置
+  const handleSaveVideoProxy = async () => {
+    try {
+      // 验证代理URL
+      if (videoProxySettings.enabled && videoProxySettings.proxyUrl) {
+        try {
+          new URL(videoProxySettings.proxyUrl);
+        } catch {
+          showAlert({
+            type: 'error',
+            title: '配置错误',
+            message: '代理URL格式不正确'
+          });
+          return;
+        }
+      }
+
+      await withLoading('saveVideoProxy', async () => {
+        const response = await fetch('/api/admin/video-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(videoProxySettings),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || '保存失败');
+        }
+
+        await refreshConfig();
+      });
+
+      showAlert({
+        type: 'success',
+        title: '保存成功',
+        message: '视频源代理配置已保存',
+        timer: 2000
+      });
+    } catch (error) {
+      showAlert({
+        type: 'error',
+        title: '保存失败',
+        message: error instanceof Error ? error.message : '保存失败'
+      });
+    }
+  };
+
+  // 检测代理状态
+  const handleCheckProxyStatus = async () => {
+    try {
+      await withLoading('checkProxyStatus', async () => {
+        const response = await fetch('/api/proxy-status');
+        if (!response.ok) {
+          throw new Error('检测失败');
+        }
+
+        const data = await response.json();
+        setProxyStatus({
+          healthy: data.videoProxy.health.healthy,
+          responseTime: data.videoProxy.health.responseTime,
+          error: data.videoProxy.health.error,
+          lastCheck: new Date().toLocaleString('zh-CN'),
+        });
+
+        if (data.videoProxy.health.healthy) {
+          showAlert({
+            type: 'success',
+            title: '代理正常',
+            message: `响应时间: ${data.videoProxy.health.responseTime}ms`,
+            timer: 3000
+          });
+        } else {
+          showAlert({
+            type: 'warning',
+            title: '代理异常',
+            message: data.videoProxy.health.error || '无法连接到 Worker',
+            timer: 3000
+          });
+        }
+      });
+    } catch (error) {
+      showAlert({
+        type: 'error',
+        title: '检测失败',
+        message: error instanceof Error ? error.message : '检测失败'
+      });
+    }
   };
 
   const handleBatchMarkAdult = async (markAsAdult: boolean) => {
@@ -3315,6 +3590,145 @@ const VideoSourceConfig = ({
 
   return (
     <div className='space-y-6'>
+      {/* Cloudflare Worker 代理配置 */}
+      <div className='border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/10 dark:to-indigo-900/10'>
+        <div className='flex items-center justify-between mb-4'>
+          <div>
+            <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2'>
+              <svg className='w-5 h-5 text-blue-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M13 10V3L4 14h7v7l9-11h-7z' />
+              </svg>
+              Cloudflare Worker 代理加速
+            </h3>
+            <p className='text-sm text-gray-600 dark:text-gray-400 mt-1'>
+              为网页播放启用全球CDN加速，提升视频源API访问速度和稳定性
+            </p>
+          </div>
+          <label className='relative inline-flex items-center cursor-pointer'>
+            <input
+              type='checkbox'
+              checked={videoProxySettings.enabled}
+              onChange={(e) => setVideoProxySettings(prev => ({ ...prev, enabled: e.target.checked }))}
+              className='sr-only peer'
+            />
+            <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+
+        {videoProxySettings.enabled && (
+          <div className='space-y-3'>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'>
+                Cloudflare Worker 地址
+              </label>
+              <input
+                type='text'
+                value={videoProxySettings.proxyUrl}
+                onChange={(e) => setVideoProxySettings(prev => ({ ...prev, proxyUrl: e.target.value }))}
+                placeholder='https://your-worker.workers.dev'
+                className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+              />
+              <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                默认地址：https://corsapi.smone.workers.dev（支持自定义部署）
+              </p>
+            </div>
+
+            <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3'>
+              <h4 className='text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2'>
+                💡 功能说明
+              </h4>
+              <ul className='text-xs text-blue-800 dark:text-blue-300 space-y-1'>
+                <li>• 通过Cloudflare全球CDN加速视频源API访问</li>
+                <li>• 自动转发所有API参数（ac=list, ac=detail等）</li>
+                <li>• 为每个源生成唯一路径，提升兼容性</li>
+                <li>• 仅影响网页播放，不影响TVBox配置</li>
+              </ul>
+            </div>
+
+            <div className='bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3'>
+              <h4 className='text-sm font-semibold text-yellow-900 dark:text-yellow-300 mb-2'>
+                ⚠️ 自定义部署
+              </h4>
+              <p className='text-xs text-yellow-800 dark:text-yellow-300'>
+                如需自定义部署Worker服务，请参考：
+                <a
+                  href='https://github.com/SzeMeng76/CORSAPI'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='underline hover:text-yellow-600 ml-1'
+                >
+                  CORSAPI项目
+                </a>
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className='flex justify-end gap-2'>
+          <button
+            onClick={handleCheckProxyStatus}
+            disabled={!videoProxySettings.enabled || isLoading('checkProxyStatus')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              !videoProxySettings.enabled || isLoading('checkProxyStatus')
+                ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed text-gray-500'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            {isLoading('checkProxyStatus') ? '检测中...' : '🔍 检测代理状态'}
+          </button>
+          <button
+            onClick={handleSaveVideoProxy}
+            disabled={isLoading('saveVideoProxy')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              isLoading('saveVideoProxy')
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {isLoading('saveVideoProxy') ? '保存中...' : '保存代理配置'}
+          </button>
+        </div>
+
+        {/* 代理状态显示 */}
+        {proxyStatus && (
+          <div className={`mt-3 p-3 rounded-lg border ${
+            proxyStatus.healthy
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          }`}>
+            <div className='flex items-center gap-2'>
+              {proxyStatus.healthy ? (
+                <svg className='w-5 h-5 text-green-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M5 13l4 4L19 7' />
+                </svg>
+              ) : (
+                <svg className='w-5 h-5 text-red-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M6 18L18 6M6 6l12 12' />
+                </svg>
+              )}
+              <div className='flex-1'>
+                <div className={`text-sm font-semibold ${
+                  proxyStatus.healthy ? 'text-green-900 dark:text-green-300' : 'text-red-900 dark:text-red-300'
+                }`}>
+                  {proxyStatus.healthy ? '✅ 代理正常工作' : '❌ 代理连接失败'}
+                </div>
+                <div className='text-xs text-gray-600 dark:text-gray-400 mt-1'>
+                  {proxyStatus.healthy && proxyStatus.responseTime && (
+                    <span>响应时间: {proxyStatus.responseTime}ms</span>
+                  )}
+                  {!proxyStatus.healthy && proxyStatus.error && (
+                    <span>错误: {proxyStatus.error}</span>
+                  )}
+                  {proxyStatus.lastCheck && (
+                    <span className='ml-3'>检测时间: {proxyStatus.lastCheck}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 添加视频源表单 */}
       <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'>
         <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
@@ -5254,6 +5668,41 @@ const LiveSourceConfig = ({
     );
   }
 
+  // 📊 读取 CORS 统计数据
+  const [corsStats, setCorsStats] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('live-cors-stats');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return { directCount: 0, proxyCount: 0, totalChecked: 0 };
+        }
+      }
+    }
+    return { directCount: 0, proxyCount: 0, totalChecked: 0 };
+  });
+
+  // 清除CORS统计和缓存
+  const handleClearCorsCache = () => {
+    if (typeof window !== 'undefined') {
+      // 清除统计数据
+      setCorsStats({ directCount: 0, proxyCount: 0, totalChecked: 0 });
+      localStorage.removeItem('live-cors-stats');
+
+      // 清除所有CORS缓存
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('cors-cache-')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      console.log('🧹 已清除所有CORS统计和缓存数据');
+      showAlert({ type: 'success', title: '清除成功', message: 'CORS统计和缓存已清除', timer: 2000 });
+    }
+  };
+
   return (
     <div className='space-y-6'>
       {/* 添加直播源表单 */}
@@ -5279,6 +5728,71 @@ const LiveSourceConfig = ({
             {showAddForm ? '取消' : '添加直播源'}
           </button>
         </div>
+      </div>
+
+      {/* 📊 CORS 检测统计面板 */}
+      <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3'>
+        {corsStats.totalChecked > 0 ? (
+          <>
+          <div className='flex items-center justify-between'>
+            <h4 className='text-sm font-semibold text-blue-900 dark:text-blue-100'>
+              📊 直连模式统计
+            </h4>
+            <button
+              onClick={handleClearCorsCache}
+              className='text-xs px-3 py-1.5 bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-200 rounded-lg transition-colors font-medium'
+            >
+              清除缓存
+            </button>
+          </div>
+
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+            <div className='bg-white dark:bg-gray-800 rounded-lg px-3 py-2.5 border border-gray-200 dark:border-gray-700'>
+              <div className='text-xs text-gray-500 dark:text-gray-400 mb-1'>支持直连</div>
+              <div className='text-base font-semibold text-green-600 dark:text-green-400'>
+                ✅ {corsStats.directCount} 个
+                <span className='text-sm ml-2 font-normal'>
+                  ({corsStats.totalChecked > 0 ? Math.round((corsStats.directCount / corsStats.totalChecked) * 100) : 0}%)
+                </span>
+              </div>
+            </div>
+
+            <div className='bg-white dark:bg-gray-800 rounded-lg px-3 py-2.5 border border-gray-200 dark:border-gray-700'>
+              <div className='text-xs text-gray-500 dark:text-gray-400 mb-1'>需要代理</div>
+              <div className='text-base font-semibold text-orange-600 dark:text-orange-400'>
+                ❌ {corsStats.proxyCount} 个
+                <span className='text-sm ml-2 font-normal'>
+                  ({corsStats.totalChecked > 0 ? Math.round((corsStats.proxyCount / corsStats.totalChecked) * 100) : 0}%)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className='bg-white dark:bg-gray-800 rounded-lg px-3 py-2.5 border border-gray-200 dark:border-gray-700'>
+            <div className='text-xs text-gray-500 dark:text-gray-400 mb-1'>总检测数 / 估算流量节省</div>
+            <div className='text-base font-semibold text-blue-600 dark:text-blue-400'>
+              📈 {corsStats.totalChecked} 个源
+              <span className='text-sm ml-3 text-green-600 dark:text-green-400 font-normal'>
+                💾 节省约 {corsStats.totalChecked > 0 ? Math.round((corsStats.directCount / corsStats.totalChecked) * 100) : 0}% 带宽
+              </span>
+            </div>
+          </div>
+
+          <div className='text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-blue-200 dark:border-blue-800'>
+            💡 提示: 直连模式通过客户端直接访问流媒体源来节省服务器带宽，但需要流媒体源支持跨域访问（CORS）。检测结果缓存有效期7天。
+          </div>
+          </>
+        ) : (
+          <div className='text-center py-8'>
+            <div className='text-4xl mb-3'>📊</div>
+            <p className='text-gray-600 dark:text-gray-400 text-sm'>
+              暂无检测数据
+            </p>
+            <p className='text-xs text-gray-500 dark:text-gray-500 mt-2'>
+              当用户播放直播频道时，系统会自动检测CORS支持情况并在此显示统计
+            </p>
+          </div>
+        )}
       </div>
 
       {showAddForm && (

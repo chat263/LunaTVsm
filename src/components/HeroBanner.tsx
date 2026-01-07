@@ -66,6 +66,17 @@ export default function HeroBanner({
     return url;
   };
 
+  // 确保 backdrop 是高清版本
+  const getHDBackdrop = (url?: string) => {
+    if (!url) return url;
+    return url
+      .replace('/view/photo/s/', '/view/photo/l/')
+      .replace('/view/photo/m/', '/view/photo/l/')
+      .replace('/view/photo/sqxs/', '/view/photo/l/')
+      .replace('/s_ratio_poster/', '/l_ratio_poster/')
+      .replace('/m_ratio_poster/', '/l_ratio_poster/');
+  };
+
   // 处理视频 URL，使用代理绕过防盗链
   const getProxiedVideoUrl = (url: string) => {
     if (url?.includes('douban') || url?.includes('doubanio')) {
@@ -186,7 +197,7 @@ export default function HeroBanner({
       const item = items[index];
       if (item) {
         const img = new window.Image();
-        const imageUrl = item.backdrop || item.poster;
+        const imageUrl = getHDBackdrop(item.backdrop) || item.poster;
         img.src = getProxiedImageUrl(imageUrl);
       }
     });
@@ -197,7 +208,7 @@ export default function HeroBanner({
   }
 
   const currentItem = items[currentIndex];
-  const backgroundImage = currentItem.backdrop || currentItem.poster;
+  const backgroundImage = getHDBackdrop(currentItem.backdrop) || currentItem.poster;
 
   // 🔍 调试日志
   console.log('[HeroBanner] 当前项目:', {
@@ -207,6 +218,23 @@ export default function HeroBanner({
     trailerUrl: currentItem.trailerUrl,
     enableVideo,
   });
+
+  // 🎯 检查并刷新缺失的 trailer URL（组件挂载时）
+  useEffect(() => {
+    const checkAndRefreshMissingTrailers = async () => {
+      for (const item of items) {
+        // 如果有 douban_id 但没有 trailerUrl，尝试获取
+        if (item.douban_id && !item.trailerUrl && !refreshedTrailerUrls[item.douban_id]) {
+          console.log('[HeroBanner] 检测到缺失的 trailer，尝试获取:', item.title);
+          await refreshTrailerUrl(item.douban_id);
+        }
+      }
+    };
+
+    // 延迟执行，避免阻塞初始渲染
+    const timer = setTimeout(checkAndRefreshMissingTrailers, 1000);
+    return () => clearTimeout(timer);
+  }, [items, refreshedTrailerUrls, refreshTrailerUrl]);
 
   return (
     <div
@@ -235,7 +263,7 @@ export default function HeroBanner({
             >
               {/* 背景图片（始终显示，作为视频的占位符） */}
               <Image
-                src={getProxiedImageUrl(item.backdrop || item.poster)}
+                src={getProxiedImageUrl(getHDBackdrop(item.backdrop) || item.poster)}
                 alt={item.title}
                 fill
                 className="object-cover object-center"
@@ -246,7 +274,7 @@ export default function HeroBanner({
               />
 
               {/* 视频背景（如果启用且有预告片URL，加载完成后淡入） */}
-              {enableVideo && item.trailerUrl && index === currentIndex && (
+              {enableVideo && getEffectiveTrailerUrl(item) && index === currentIndex && (
                 <video
                   ref={videoRef}
                   className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
@@ -321,9 +349,9 @@ export default function HeroBanner({
 
       {/* 内容叠加层 - Netflix风格：左下角 */}
       <div className="absolute bottom-0 left-0 right-0 px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 pb-12 sm:pb-16 md:pb-20 lg:pb-24">
-        <div className="max-w-2xl space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
+        <div className="space-y-3 sm:space-y-4 md:space-y-5 lg:space-y-6">
           {/* 标题 - Netflix风格：超大字体 */}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white drop-shadow-2xl leading-tight">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white drop-shadow-2xl leading-tight break-words">
             {currentItem.title}
           </h1>
 
@@ -388,11 +416,11 @@ export default function HeroBanner({
         </div>
       </div>
 
-      {/* 音量控制按钮（仅视频模式） */}
-      {enableVideo && currentItem.trailerUrl && (
+      {/* 音量控制按钮（仅视频模式） - 底部右下角，避免遮挡简介 */}
+      {enableVideo && getEffectiveTrailerUrl(currentItem) && (
         <button
           onClick={toggleMute}
-          className="absolute bottom-28 sm:bottom-32 md:bottom-36 right-4 sm:right-8 md:right-12 lg:right-16 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition-all border border-white/50"
+          className="absolute bottom-6 sm:bottom-8 right-4 sm:right-8 md:right-12 lg:right-16 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition-all border border-white/50 z-10"
           aria-label={isMuted ? '取消静音' : '静音'}
         >
           {isMuted ? (

@@ -82,11 +82,25 @@ export async function POST(req: NextRequest) {
     await db.clearAllData();
 
     // 🔥 修复：先注册所有用户，然后再进行配置自检查
-    // 步骤1：重新注册所有用户（包含密码）
+    // 步骤1：重新注册所有用户（包含完整的V2信息）
     const userData = importData.data.userData;
     for (const username in userData) {
       const user = userData[username];
-      if (user.password) {
+
+      // 优先使用 V2 用户信息创建用户
+      if (user.userInfoV2) {
+        console.log(`创建 V2 用户: ${username}`, user.userInfoV2);
+        await db.createUserV2(
+          username,
+          user.userInfoV2.password || user.password || '', // 优先使用V2加密密码
+          user.userInfoV2.role || 'user',
+          user.userInfoV2.tags,
+          user.userInfoV2.oidcSub, // 恢复 OIDC 绑定
+          user.userInfoV2.enabledApis
+        );
+      } else if (user.password) {
+        // 兼容旧版本备份（V1用户）
+        console.log(`创建 V1 用户: ${username}`);
         await db.registerUser(username, user.password);
       }
     }
@@ -97,7 +111,7 @@ export async function POST(req: NextRequest) {
     await db.saveAdminConfig(importData.data.adminConfig);
     await setCachedConfig(importData.data.adminConfig);
 
-    // 步骤3：导入用户的其他数据（播放记录、收藏等）
+    // 步骤3：导入用户的其他数据（播放记录、收藏、登录统计等）
     for (const username in userData) {
       const user = userData[username];
 
@@ -129,6 +143,21 @@ export async function POST(req: NextRequest) {
           if (source && id) {
             await db.setSkipConfig(username, source, id, skipConfig as any);
           }
+        }
+      }
+
+      // 导入登录统计（恢复 loginCount, firstLoginTime, lastLoginTime）
+      if (user.loginStats) {
+        try {
+          const storage = (db as any).storage;
+          if (storage && typeof storage.client?.set === 'function') {
+            const loginStatsKey = `user_login_stats:${username}`;
+            const statsData = JSON.stringify(user.loginStats);
+            await storage.client.set(loginStatsKey, statsData);
+            console.log(`已恢复用户 ${username} 的登录统计:`, user.loginStats);
+          }
+        } catch (error) {
+          console.error(`恢复用户 ${username} 登录统计失败:`, error);
         }
       }
     }

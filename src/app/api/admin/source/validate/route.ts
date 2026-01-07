@@ -3,20 +3,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
-import { getConfig } from '@/lib/config';
+import { getConfig, getAvailableApiSites } from '@/lib/config';
 import { API_CONFIG } from '@/lib/config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  console.log('[Source Validate] ========== API Route Called ==========');
+
   const authInfo = getAuthInfoFromCookie(request);
   if (!authInfo || !authInfo.username) {
+    console.log('[Source Validate] Unauthorized - no auth info');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
   const searchKeyword = searchParams.get('q');
+  console.log(`[Source Validate] Search keyword: ${searchKeyword}`);
 
   if (!searchKeyword) {
     return new Response(
@@ -30,8 +34,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const config = await getConfig();
-  const apiSites = config.SourceConfig;
+  // 🔑 使用 getAvailableApiSites() 来获取源列表，自动应用代理配置
+  const apiSites = await getAvailableApiSites(authInfo.username);
+
+  // 🔍 调试：记录前3个源的API地址，检查是否应用了代理
+  console.log('[Source Validate] ========== Validation Start ==========');
+  console.log(`[Source Validate] Username: ${authInfo.username}`);
+  console.log(`[Source Validate] Total sources: ${apiSites.length}`);
+  console.log('[Source Validate] Sample API URLs:', apiSites.slice(0, 3).map(s => ({
+    name: s.name,
+    api: s.api.substring(0, 100) + (s.api.length > 100 ? '...' : '')
+  })));
+  console.log('[Source Validate] =========================================');
 
   // 共享状态
   let streamClosed = false;
@@ -74,6 +88,9 @@ export async function GET(request: NextRequest) {
         try {
           // 构建搜索URL，只获取第一页
           const searchUrl = `${site.api}?ac=videolist&wd=${encodeURIComponent(searchKeyword)}`;
+
+          // 🔍 调试：记录实际请求的URL
+          console.log(`[Source Validate] Testing ${site.name}: ${searchUrl.substring(0, 150)}...`);
 
           // 设置超时控制
           const controller = new AbortController();
