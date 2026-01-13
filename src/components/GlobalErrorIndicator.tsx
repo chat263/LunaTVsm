@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 interface ErrorInfo {
   id: string;
@@ -8,10 +8,15 @@ interface ErrorInfo {
   timestamp: number;
 }
 
+const AUTO_CLOSE_DURATION = 9000; // ⏱ 自动关闭时间（毫秒）
+
 export function GlobalErrorIndicator() {
   const [currentError, setCurrentError] = useState<ErrorInfo | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isReplacing, setIsReplacing] = useState(false);
+
+  // ✅ 新增：用于保存自动关闭的定时器
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // 监听自定义错误事件
@@ -38,6 +43,16 @@ export function GlobalErrorIndicator() {
       }
 
       setIsVisible(true);
+
+      // ✅ 关键：重置自动关闭计时器
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+      }
+
+      autoCloseTimerRef.current = setTimeout(() => {
+        handleClose();
+      }, AUTO_CLOSE_DURATION);
+
     };
 
     // 监听错误事件
@@ -45,6 +60,9 @@ export function GlobalErrorIndicator() {
 
     return () => {
       window.removeEventListener('globalError', handleError as EventListener);
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+      }
     };
   }, [currentError]);
 
@@ -52,6 +70,13 @@ export function GlobalErrorIndicator() {
     setIsVisible(false);
     setCurrentError(null);
     setIsReplacing(false);
+
+    // ✅ 关闭时清理定时器
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+
   };
 
   if (!isVisible || !currentError) {
