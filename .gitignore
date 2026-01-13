@@ -43,6 +43,7 @@ sitemap-*.xml
 # generated files
 src/lib/runtime.ts
 public/manifest.json
+
 config.json
 cube
 xy
@@ -57,3 +58,10 @@ pnpm-lock.yaml
 *.zip
 f.js
 docker
+
+
+# local dev files
+AGENT.md
+TVBOX_DEV.md
+docker-compose.yml
+

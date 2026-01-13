@@ -5,6 +5,7 @@ import { unstable_noStore } from 'next/cache';
 import { db } from '@/lib/db';
 
 import { AdminConfig } from './admin.types';
+import { DEFAULT_USER_AGENT } from './user-agent';
 
 export interface ApiSite {
   key: string;
@@ -18,6 +19,7 @@ export interface LiveCfg {
   url: string;
   ua?: string;
   epg?: string; // 节目单
+  isTvBox?: boolean;
 }
 
 interface ConfigFileStruct {
@@ -40,16 +42,14 @@ export const API_CONFIG = {
     path: '?ac=videolist&wd=',
     pagePath: '?ac=videolist&wd={query}&pg={page}',
     headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'User-Agent': DEFAULT_USER_AGENT,
       Accept: 'application/json',
     },
   },
   detail: {
     path: '?ac=videolist&ids=',
     headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'User-Agent': DEFAULT_USER_AGENT,
       Accept: 'application/json',
     },
   },
@@ -282,6 +282,7 @@ async function getInitConfig(configFile: string, subConfig: {
       url: live.url,
       ua: live.ua,
       epg: live.epg,
+      isTvBox: live.isTvBox,
       channelNumber: 0,
       from: 'config',
       disabled: false,
