@@ -18,6 +18,20 @@ export function GlobalErrorIndicator() {
   // ✅ 新增：用于保存自动关闭的定时器
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  
+  const handleClose = () => {
+    setIsVisible(false);
+    setCurrentError(null);
+    setIsReplacing(false);
+
+    // ✅ 关闭时清理定时器
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+
+  };
+
   useEffect(() => {
     // 监听自定义错误事件
     const handleError = (event: CustomEvent) => {
@@ -46,6 +60,7 @@ export function GlobalErrorIndicator() {
 
       // ✅ 关键：重置自动关闭计时器
       if (autoCloseTimerRef.current) {
+        handleClose();
         clearTimeout(autoCloseTimerRef.current);
       }
 
@@ -61,23 +76,12 @@ export function GlobalErrorIndicator() {
     return () => {
       window.removeEventListener('globalError', handleError as EventListener);
       if (autoCloseTimerRef.current) {
+        handleClose();
         clearTimeout(autoCloseTimerRef.current);
       }
     };
   }, [currentError]);
 
-  const handleClose = () => {
-    setIsVisible(false);
-    setCurrentError(null);
-    setIsReplacing(false);
-
-    // ✅ 关闭时清理定时器
-    if (autoCloseTimerRef.current) {
-      clearTimeout(autoCloseTimerRef.current);
-      autoCloseTimerRef.current = null;
-    }
-
-  };
 
   if (!isVisible || !currentError) {
     return null;
