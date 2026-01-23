@@ -87,6 +87,7 @@ function PlayPageClient() {
   // 豆瓣详情状态
   const [movieDetails, setMovieDetails] = useState<any>(null);
   const [loadingMovieDetails, setLoadingMovieDetails] = useState(false);
+  const [lastMovieDetailsFetchTime, setLastMovieDetailsFetchTime] = useState<number>(0); // 记录上次请求时间
 
   // 豆瓣短评状态
   const [movieComments, setMovieComments] = useState<any[]>([]);
@@ -440,15 +441,29 @@ function PlayPageClient() {
         if (loadingMovieDetails || movieDetails) {
           return;
         }
-        
+
+        // 🎯 防止频繁重试：如果上次请求在1分钟内，则跳过
+        const now = Date.now();
+        const oneMinute = 60 * 1000; // 1分钟 = 60秒 = 60000毫秒
+        if (lastMovieDetailsFetchTime > 0 && now - lastMovieDetailsFetchTime < oneMinute) {
+          console.log(`⏱️ 距离上次请求不足1分钟，跳过重试（${Math.floor((now - lastMovieDetailsFetchTime) / 1000)}秒前）`);
+          return;
+        }
+
         setLoadingMovieDetails(true);
+        setLastMovieDetailsFetchTime(now); // 记录本次请求时间
         try {
           const response = await getDoubanDetails(videoDoubanId.toString());
-          if (response.code === 200 && response.data) {
+          // 🎯 只有在数据有效（title 存在）时才设置 movieDetails
+          if (response.code === 200 && response.data && response.data.title) {
             setMovieDetails(response.data);
+          } else if (response.code === 200 && response.data && !response.data.title) {
+            console.warn('⚠️ Douban 返回空数据（缺少标题），1分钟后将自动重试');
+            setMovieDetails(null);
           }
         } catch (error) {
           console.error('Failed to load movie details:', error);
+          setMovieDetails(null);
         } finally {
           setLoadingMovieDetails(false);
         }
@@ -456,7 +471,7 @@ function PlayPageClient() {
     };
 
     loadMovieDetails();
-  }, [videoDoubanId, loadingMovieDetails, movieDetails, loadingBangumiDetails, bangumiDetails]);
+  }, [videoDoubanId, loadingMovieDetails, movieDetails, loadingBangumiDetails, bangumiDetails, lastMovieDetailsFetchTime]);
 
   // 加载豆瓣短评
   useEffect(() => {
@@ -3050,12 +3065,41 @@ function PlayPageClient() {
   // 集数切换
   // ---------------------------------------------------------------------------
   // 处理集数切换
-  const handleEpisodeChange = (episodeNumber: number) => {
+  const handleEpisodeChange = async (episodeNumber: number) => {
     if (episodeNumber >= 0 && episodeNumber < totalEpisodes) {
       // 在更换集数前保存当前播放进度
       if (artPlayerRef.current && artPlayerRef.current.paused) {
         saveCurrentPlayProgress();
       }
+
+      // 🔥 优化：检查目标集数是否有历史播放记录
+      try {
+        const allRecords = await getAllPlayRecords();
+        const key = generateStorageKey(currentSourceRef.current, currentIdRef.current);
+        const record = allRecords[key];
+
+        // 如果历史记录的集数与目标集数匹配，且有播放进度
+        if (record && record.index - 1 === episodeNumber && record.play_time > 0) {
+          resumeTimeRef.current = record.play_time;
+          console.log(`🎯 切换到第${episodeNumber + 1}集，恢复历史进度: ${record.play_time.toFixed(2)}s`);
+        } else {
+          resumeTimeRef.current = 0;
+          console.log(`🔄 切换到第${episodeNumber + 1}集，从头播放`);
+        }
+      } catch (err) {
+        console.warn('读取历史记录失败:', err);
+        resumeTimeRef.current = 0;
+      }
+
+      // 🔥 优化：同步更新URL参数，保持URL与实际播放状态一致
+      try {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('index', episodeNumber.toString());
+        window.history.replaceState({}, '', newUrl.toString());
+      } catch (err) {
+        console.warn('更新URL参数失败:', err);
+      }
+
       setCurrentEpisodeIndex(episodeNumber);
     }
   };
@@ -4301,7 +4345,7 @@ function PlayPageClient() {
 
         // 使用ArtPlayer layers API添加分辨率徽章（带渐变和发光效果）
         const video = artPlayerRef.current.video as HTMLVideoElement;
-        
+
         // 添加分辨率徽章layer
         artPlayerRef.current.layers.add({
           name: 'resolution-badge',
@@ -4318,37 +4362,60 @@ function PlayPageClient() {
             textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)',
             backdropFilter: 'blur(10px)',
             pointerEvents: 'none',
-            transition: 'all 0.3s ease',
+            opacity: '1',
+            transition: 'opacity 0.3s ease',
             letterSpacing: '0.5px',
           },
         });
-        
+
+        // 自动隐藏徽章的定时器
+        let badgeHideTimer: NodeJS.Timeout | null = null;
+
+        const showBadge = () => {
+          const badge = artPlayerRef.current?.layers['resolution-badge'];
+          if (badge) {
+            badge.style.opacity = '1';
+
+            // 清除之前的定时器
+            if (badgeHideTimer) {
+              clearTimeout(badgeHideTimer);
+            }
+
+            // 3秒后自动隐藏徽章
+            badgeHideTimer = setTimeout(() => {
+              if (badge) {
+                badge.style.opacity = '0';
+              }
+            }, 3000);
+          }
+        };
+
         const updateResolution = () => {
           if (video.videoWidth && video.videoHeight) {
-            const height = video.videoHeight;
-            const label = height >= 2160 ? '4K' : 
-                         height >= 1440 ? '2K' : 
-                         height >= 1080 ? '1080P' : 
-                         height >= 720 ? '720P' : 
-                         height + 'P';
-            
+            const width = video.videoWidth;
+            const label = width >= 3840 ? '4K' :
+                         width >= 2560 ? '2K' :
+                         width >= 1920 ? '1080P' :
+                         width >= 1280 ? '720P' :
+                         width + 'P';
+
             // 根据质量设置不同的渐变背景和发光效果
             let gradientStyle = '';
             let boxShadow = '';
-            
-            if (height >= 2160) {
+
+            if (width >= 3840) {
               // 4K - 金色/紫色渐变 + 金色发光
               gradientStyle = 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)';
               boxShadow = '0 0 20px rgba(255, 215, 0, 0.6), 0 0 10px rgba(255, 165, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-            } else if (height >= 1440) {
+            } else if (width >= 2560) {
               // 2K - 蓝色/青色渐变 + 蓝色发光
               gradientStyle = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
               boxShadow = '0 0 20px rgba(102, 126, 234, 0.6), 0 0 10px rgba(118, 75, 162, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-            } else if (height >= 1080) {
+            } else if (width >= 1920) {
               // 1080P - 绿色/青色渐变 + 绿色发光
               gradientStyle = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
               boxShadow = '0 0 15px rgba(17, 153, 142, 0.5), 0 0 8px rgba(56, 239, 125, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-            } else if (height >= 720) {
+            } else if (width >= 1280) {
               // 720P - 橙色渐变 + 橙色发光
               gradientStyle = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
               boxShadow = '0 0 15px rgba(240, 147, 251, 0.4), 0 0 8px rgba(245, 87, 108, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
@@ -4357,7 +4424,7 @@ function PlayPageClient() {
               gradientStyle = 'linear-gradient(135deg, #606c88 0%, #3f4c6b 100%)';
               boxShadow = '0 0 10px rgba(96, 108, 136, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
             }
-            
+
             // 更新layer内容和样式
             const badge = artPlayerRef.current.layers['resolution-badge'];
             if (badge) {
@@ -4365,17 +4432,26 @@ function PlayPageClient() {
               badge.style.background = gradientStyle;
               badge.style.boxShadow = boxShadow;
             }
-            
+
             // 同时更新state供React使用
             setVideoResolution({ width: video.videoWidth, height: video.videoHeight });
+
+            // 显示徽章并启动自动隐藏定时器
+            showBadge();
           }
         };
-        
+
         // 监听loadedmetadata事件获取分辨率
         video.addEventListener('loadedmetadata', updateResolution);
         if (video.videoWidth && video.videoHeight) {
           updateResolution();
         }
+
+        // 用户交互时重新显示徽章（鼠标移动、点击、键盘操作）
+        const userInteractionEvents = ['mousemove', 'click', 'touchstart', 'keydown'];
+        userInteractionEvents.forEach(eventName => {
+          artPlayerRef.current.on(eventName, showBadge);
+        });
 
         // 观影室时间同步：从URL参数读取初始播放时间
         const timeParam = searchParams.get('t') || searchParams.get('time');

@@ -1,6 +1,6 @@
 {
   "name": "moontv",
-  "version": "5.9.3",
+  "version": "6.0.0",
   "private": true,
   "scripts": {
     "clean": "next clean",
@@ -29,6 +29,7 @@
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
     "@mui/material": "^7.3.6",
+    "@sparticuz/chromium": "^143.0.4",
     "@tailwindcss/typography": "^0.5.19",
     "@types/crypto-js": "^4.2.2",
     "@upstash/redis": "^1.25.0",
@@ -48,6 +49,7 @@
     "mux.js": "^6.3.0",
     "next": "^16.1.0",
     "next-themes": "^0.4.6",
+    "puppeteer-core": "^24.36.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.4.0",
@@ -91,7 +93,7 @@
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.1.4",
-    "husky": "^7.0.4",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^12.5.0",
     "minimatch": "^3.1.2",

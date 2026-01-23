@@ -2,7 +2,7 @@
 
 import { ClientCache } from './client-cache';
 import { DoubanItem, DoubanResult, DoubanCommentsResult } from './types';
-import { getRandomUserAgent } from './user-agent';
+import { getRandomUserAgent, DEFAULT_USER_AGENT } from './user-agent';
 
 // 🔍 调试工具：在浏览器控制台使用
 if (typeof window !== 'undefined') {
@@ -684,11 +684,13 @@ export async function getDoubanDetails(id: string): Promise<{
 
     const result = await response.json();
 
-    // 保存到缓存（调试模式下不缓存）
-    if (result.code === 200 && !isDebugMode) {
+    // 🎯 只缓存有效数据（必须有 title）
+    if (result.code === 200 && result.data?.title && !isDebugMode) {
       const cacheKey = getCacheKey('details', { id });
       await setCache(cacheKey, result, DOUBAN_CACHE_EXPIRE.details);
       console.log(`豆瓣详情已缓存: ${id}`);
+    } else if (result.code === 200 && !result.data?.title) {
+      console.warn(`⚠️ 豆瓣详情数据无效（缺少标题），不缓存: ${id}`);
     }
 
     return result;
@@ -841,7 +843,7 @@ export async function getDoubanActorMovies(
 
     const response = await fetch(searchUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'User-Agent': DEFAULT_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'Referer': 'https://www.douban.com/',
