@@ -57,6 +57,8 @@ export interface AdminConfig {
     from: 'config' | 'custom';
     disabled?: boolean;
     is_adult?: boolean;
+    type?: 'vod' | 'shortdrama'; // 视频源类型：vod=普通视频，shortdrama=短剧（系统会自动查找"短剧"分类）
+    weight?: number; // 优先级权重：0-100，数字越大优先级越高，默认50。播放时先按权重排序，同权重再按测速结果
   }[];
   CustomCategories: {
     name?: string;
@@ -167,6 +169,17 @@ export interface AdminConfig {
     enabled: boolean;                    // 是否启用观影室功能
     serverUrl: string;                   // 外部观影室服务器地址
     authKey: string;                     // 观影室服务器认证密钥
+  };
+  DoubanConfig?: {
+    enablePuppeteer: boolean;            // 是否启用 Puppeteer 绕过 Challenge（默认 false）
+    cookies?: string;                    // 豆瓣认证 Cookies（包含 dbcl2, frodotk_db, ck 等）
+  };
+  CronConfig?: {
+    enableAutoRefresh: boolean;          // 是否启用自动刷新播放记录和收藏（默认 true）
+    maxRecordsPerRun: number;            // 每次运行最多处理的记录数（默认 100）
+    onlyRefreshRecent: boolean;          // 仅刷新最近活跃的记录（默认 true）
+    recentDays: number;                  // 最近活跃的天数定义（默认 30）
+    onlyRefreshOngoing: boolean;         // 仅刷新连载中的剧集（默认 true）
   };
 }
 
