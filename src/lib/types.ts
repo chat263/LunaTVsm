@@ -13,7 +13,7 @@ export interface PlayRecord {
   total_time: number; // 总进度（秒）
   save_time: number; // 记录保存时间（时间戳）
   search_title: string; // 搜索时使用的标题
-  strtype?: string;
+  strtype: string;
   remarks?: string; // 备注信息（如"已完结"、"更新至20集"等）
   douban_id?: number; // 豆瓣ID（用于准确识别视频）
   type?: string; // 内容类型（anime/tv/movie）用于继续播放时正确请求详情
