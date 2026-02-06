@@ -694,6 +694,7 @@ async function refreshRecordAndFavorites() {
                   total_time: record.total_time,
                   save_time: record.save_time,
                   search_title: record.search_title,
+                  strtype: '',
                   original_episodes: record.original_episodes,
                 }
               });
