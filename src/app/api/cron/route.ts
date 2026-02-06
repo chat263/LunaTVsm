@@ -3,11 +3,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getSpiderJarFromBlob, uploadSpiderJarToBlob } from '@/lib/blobStorage';
 import { getConfig, refineConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 import { fetchVideoDetail } from '@/lib/fetchVideoDetail';
 import { refreshLiveChannels } from '@/lib/live';
-import { SearchResult } from '@/lib/types';
+import { getSpiderJar } from '@/lib/spiderJar';
+import { SearchResult, Favorite, PlayRecord } from '@/lib/types';
 import { recordRequest, getDbQueryCount, resetDbQueryCount } from '@/lib/performance-monitor';
 import { migrateOldCache, cleanupExpiredCache, validateCacheSize } from '@/lib/video-cache';
 
@@ -337,6 +339,17 @@ async function cronJob() {
       } catch (err) {
         console.error('❌ 缓存大小校验失败:', err);
       }
+    })(),
+
+    // 🎯 Spider JAR 更新任务（仅 Vercel 环境）
+    (async () => {
+      try {
+        console.log('🕷️ 检查 Spider JAR 更新...');
+        await updateSpiderJarToBlob();
+        console.log('✅ Spider JAR 更新检查完成');
+      } catch (err) {
+        console.error('❌ Spider JAR 更新失败:', err);
+      }
     })()
   ]);
 
@@ -637,6 +650,9 @@ async function refreshRecordAndFavorites() {
           console.log(`🔢 限制处理数量: ${recordsToProcess.length}/${totalRecords}`);
         }
 
+        // 🚀 Upstash 优化：收集需要更新的记录，最后批量写入
+        const recordsToUpdate: Array<{ source: string; id: string; record: PlayRecord }> = [];
+
         // 🚀 阶段1优化：并发处理播放记录（10个并发）
         const { results: recordResults, errors: recordErrors } = await processBatch(
           recordsToProcess,
@@ -663,20 +679,23 @@ async function refreshRecordAndFavorites() {
 
             const episodeCount = detail.episodes?.length || 0;
             if (episodeCount > 0 && episodeCount !== record.total_episodes) {
-              await db.savePlayRecord(user, source, id, {
-                title: detail.title || record.title,
-                source_name: record.source_name,
-                cover: detail.poster || record.cover,
-                index: record.index,
-                total_episodes: episodeCount,
-                play_time: record.play_time,
-                year: detail.year || record.year,
-                total_time: record.total_time,
-                save_time: record.save_time,
-                search_title: record.search_title,
-                strtype: '',
-                // 🔑 关键修复：保留原始集数，避免被Cron任务覆盖
-                original_episodes: record.original_episodes,
+              // 🚀 收集而不是立即写入
+              recordsToUpdate.push({
+                source,
+                id,
+                record: {
+                  title: detail.title || record.title,
+                  source_name: record.source_name,
+                  cover: detail.poster || record.cover,
+                  index: record.index,
+                  total_episodes: episodeCount,
+                  play_time: record.play_time,
+                  year: detail.year || record.year,
+                  total_time: record.total_time,
+                  save_time: record.save_time,
+                  search_title: record.search_title,
+                  original_episodes: record.original_episodes,
+                }
               });
               console.log(
                 `更新播放记录: ${record.title} (${record.total_episodes} -> ${episodeCount})`
@@ -693,6 +712,12 @@ async function refreshRecordAndFavorites() {
             }
           }
         );
+
+        // 🚀 Upstash 优化：批量写入所有更新（使用 mset，只算1条命令）
+        if (recordsToUpdate.length > 0) {
+          await db.savePlayRecordsBatch(user, recordsToUpdate);
+          console.log(`🚀 批量写入 ${recordsToUpdate.length} 条播放记录（mset 优化）`);
+        }
 
         const processedRecords = recordResults.filter(r => r !== null).length;
         totalRecordsProcessed += processedRecords;
@@ -733,6 +758,9 @@ async function refreshRecordAndFavorites() {
           console.log(`🔢 限制处理数量: ${favoritesToProcess.length}/${totalFavorites}`);
         }
 
+        // 🚀 Upstash 优化：收集需要更新的收藏，最后批量写入
+        const favoritesToUpdate: Array<{ source: string; id: string; favorite: Favorite }> = [];
+
         // 🚀 阶段1优化：并发处理收藏（10个并发）
         const { results: favResults, errors: favErrors } = await processBatch(
           favoritesToProcess,
@@ -751,14 +779,19 @@ async function refreshRecordAndFavorites() {
 
             const favEpisodeCount = favDetail.episodes?.length || 0;
             if (favEpisodeCount > 0 && favEpisodeCount !== fav.total_episodes) {
-              await db.saveFavorite(user, source, id, {
-                title: favDetail.title || fav.title,
-                source_name: fav.source_name,
-                cover: favDetail.poster || fav.cover,
-                year: favDetail.year || fav.year,
-                total_episodes: favEpisodeCount,
-                save_time: fav.save_time,
-                search_title: fav.search_title,
+              // 🚀 收集而不是立即写入
+              favoritesToUpdate.push({
+                source,
+                id,
+                favorite: {
+                  title: favDetail.title || fav.title,
+                  source_name: fav.source_name,
+                  cover: favDetail.poster || fav.cover,
+                  year: favDetail.year || fav.year,
+                  total_episodes: favEpisodeCount,
+                  save_time: fav.save_time,
+                  search_title: fav.search_title,
+                }
               });
               console.log(
                 `更新收藏: ${fav.title} (${fav.total_episodes} -> ${favEpisodeCount})`
@@ -775,6 +808,12 @@ async function refreshRecordAndFavorites() {
             }
           }
         );
+
+        // 🚀 Upstash 优化：批量写入所有更新（使用 mset，只算1条命令）
+        if (favoritesToUpdate.length > 0) {
+          await db.saveFavoritesBatch(user, favoritesToUpdate);
+          console.log(`🚀 批量写入 ${favoritesToUpdate.length} 条收藏（mset 优化）`);
+        }
 
         const processedFavorites = favResults.filter(r => r !== null).length;
         totalFavoritesProcessed += processedFavorites;
@@ -1075,5 +1114,36 @@ async function optimizeActiveUserLevels() {
     console.log(`✅ 等级优化完成，共优化 ${optimizedCount} 个用户`);
   } catch (err) {
     console.error('🚫 等级优化任务失败:', err);
+  }
+}
+
+/**
+ * 🕷️ Spider JAR 自动更新任务（仅 Vercel 环境）
+ * 每次都上传最新版本到 Blob（简化逻辑，Blob 会自动覆盖）
+ */
+async function updateSpiderJarToBlob() {
+  try {
+    // 1. 强制从 GitHub 拉取最新版本
+    console.log('[Spider Update] 从远程拉取最新 JAR...');
+    const newJar = await getSpiderJar(true);
+
+    if (!newJar.success) {
+      console.warn('[Spider Update] 远程 JAR 获取失败，跳过更新');
+      return;
+    }
+
+    console.log(`[Spider Update] 获取成功: ${newJar.source}, MD5: ${newJar.md5}, 大小: ${newJar.size} bytes`);
+
+    // 2. 上传到 Blob（会自动覆盖旧版本）
+    const blobUrl = await uploadSpiderJarToBlob(newJar.buffer, newJar.md5, newJar.source);
+    if (blobUrl) {
+      console.log(`[Spider Update] ✅ JAR 已更新到 Blob CDN!`);
+      console.log(`[Spider Update] URL: ${blobUrl}`);
+      console.log(`[Spider Update] MD5: ${newJar.md5}`);
+    } else {
+      console.warn('[Spider Update] Blob 上传失败（可能不在 Vercel 环境）');
+    }
+  } catch (error) {
+    console.error('[Spider Update] 更新失败:', error);
   }
 }

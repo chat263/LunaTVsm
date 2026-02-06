@@ -490,7 +490,7 @@ function PlayPageClient() {
         if (loadingBangumiDetails || bangumiDetails) {
           return;
         }
-        
+
         setLoadingBangumiDetails(true);
         try {
           const bangumiData = await fetchBangumiDetails(videoDoubanId);
@@ -3180,6 +3180,7 @@ function PlayPageClient() {
         strtype: strtype,
         remarks: remarksToSave, // 优先使用搜索结果的 remarks，因为详情接口可能没有
         douban_id: videoDoubanIdRef.current || detailRef.current?.douban_id || undefined, // 添加豆瓣ID
+        type: searchType || undefined, // 保存内容类型（anime/tv/movie）用于继续播放时正确请求详情
       });
 
       lastSaveTimeRef.current = Date.now();
@@ -4908,6 +4909,18 @@ function PlayPageClient() {
       });
       artPlayerRef.current.on('video:ratechange', () => {
         lastPlaybackRateRef.current = artPlayerRef.current.playbackRate;
+      });
+
+      // 监听全屏事件，进入全屏后自动隐藏控制栏
+      artPlayerRef.current.on('fullscreen', (isFullscreen: boolean) => {
+        if (isFullscreen) {
+          // 进入全屏后，延迟100ms触发控制栏自动隐藏
+          setTimeout(() => {
+            if (artPlayerRef.current?.controls) {
+              artPlayerRef.current.controls.show = true;
+            }
+          }, 100);
+        }
       });
 
       // 监听视频可播放事件，这时恢复播放进度更可靠
