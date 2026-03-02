@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       DisableYellowFilter,
       ShowAdultContent,
       FluidSearch,
+      EnableWebLive,
       EnablePuppeteer,
       DoubanCookies,
       TMDBApiKey,
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       DisableYellowFilter: boolean;
       ShowAdultContent: boolean;
       FluidSearch: boolean;
+      EnableWebLive: boolean;
       EnablePuppeteer: boolean;
       DoubanCookies?: string;
       TMDBApiKey?: string;
@@ -118,6 +120,7 @@ export async function POST(request: NextRequest) {
       DisableYellowFilter,
       ShowAdultContent,
       FluidSearch,
+      EnableWebLive: EnableWebLive ?? false,
       TMDBApiKey: TMDBApiKey || '',
       TMDBLanguage: TMDBLanguage || 'zh-CN',
       EnableTMDBActorSearch: EnableTMDBActorSearch || false,
