@@ -20,7 +20,7 @@ import SearchResultFilter, { SearchFilterCategory } from '@/components/SearchRes
 import SearchSuggestions from '@/components/SearchSuggestions';
 import TMDBFilterPanel, { TMDBFilterState } from '@/components/TMDBFilterPanel';
 import VideoCard, { VideoCardHandle } from '@/components/VideoCard';
-import VirtualSearchGrid from '@/components/VirtualSearchGrid';
+// import VirtualSearchGrid from '@/components/VirtualSearchGrid';
 import YouTubeVideoCard from '@/components/YouTubeVideoCard';
 
 function SearchPageClient() {
@@ -1441,21 +1441,7 @@ function SearchPageClient() {
                 </div>
               </div>
               {/* 条件渲染：虚拟化 vs 传统网格 */}
-              {useVirtualization ? (
-                <VirtualSearchGrid
-                  allResults={searchResults}
-                  filteredResults={filteredAllResults}
-                  aggregatedResults={aggregatedResults}
-                  filteredAggResults={filteredAggResults}
-                  viewMode={viewMode}
-                  searchQuery={searchQuery}
-                  isLoading={isLoading}
-                  groupRefs={groupRefs}
-                  groupStatsRef={groupStatsRef}
-                  getGroupRef={getGroupRef}
-                  computeGroupStats={computeGroupStats}
-                />
-              ) : (
+              {(
                 // 传统网格渲染（保持原有逻辑）
                 searchResults.length === 0 ? (
                   isLoading ? (
