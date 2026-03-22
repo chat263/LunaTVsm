@@ -1,5 +1,6 @@
 {
   "regions": ["sin1"],
+  
   "headers": [
     {
       "source": "/fonts/inter-var-latin.woff2",
