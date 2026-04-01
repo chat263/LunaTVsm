@@ -93,7 +93,7 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
     const clientConfig: any = {
       url: config.url,
       socket: {
-        tls: false,
+        tls: true,
         rejectUnauthorized: false, // 开启证书验证
         // 重连策略：指数退避，最大30秒
         reconnectStrategy: (retries: number) => {
