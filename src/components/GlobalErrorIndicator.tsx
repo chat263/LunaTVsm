@@ -14,12 +14,14 @@ export function GlobalErrorIndicator() {
   const [currentError, setCurrentError] = useState<ErrorInfo | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isReplacing, setIsReplacing] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   // ✅ 新增：用于保存自动关闭的定时器
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   
   const handleClose = () => {
+    setIsClosing(true);
     setIsVisible(false);
     setCurrentError(null);
     setIsReplacing(false);
@@ -68,6 +70,8 @@ export function GlobalErrorIndicator() {
         handleClose();
       }, AUTO_CLOSE_DURATION);
 
+      setIsClosing(false);
+
     };
 
     // 监听错误事件
@@ -82,6 +86,20 @@ export function GlobalErrorIndicator() {
     };
   }, [currentError]);
 
+  // 5秒后自动关闭
+  useEffect(() => {
+    if (!currentError || isClosing) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleClose();
+    }, 5000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [currentError, isClosing]);
 
   if (!isVisible || !currentError) {
     return null;
@@ -92,6 +110,10 @@ export function GlobalErrorIndicator() {
       {/* 错误卡片 */}
       <div
         className={`bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center justify-between min-w-[300px] max-w-[400px] transition-all duration-300 ${
+          isClosing
+            ? '-translate-y-4 opacity-0'
+            : 'translate-y-0 opacity-100'
+        } ${
           isReplacing ? 'scale-105 bg-red-400' : 'scale-100 bg-red-500'
         } animate-fade-in`}
       >
