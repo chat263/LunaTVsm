@@ -62,6 +62,7 @@ export interface VideoCardProps {
   priority?: boolean; // 图片加载优先级（用于首屏可见图片）
   aiEnabled?: boolean; // AI功能是否启用（从父组件传递）
   aiCheckComplete?: boolean; // AI权限检测是否完成（从父组件传递）
+  play_time?: number;
 }
 
 export type VideoCardHandle = {
@@ -101,6 +102,7 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
     priority = false,
     aiEnabled: aiEnabledProp,
     aiCheckComplete: aiCheckCompleteProp,
+    play_time = 0,
   }: VideoCardProps,
   ref
 ) {
@@ -1516,7 +1518,10 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
 
         {/* 进度条 */}
         {config.showProgress && progress !== undefined && (
-          <div
+          <div 
+          title={`播放时间：${Math.floor(play_time / 60)}:${Math.floor(play_time % 60)
+            .toString()
+            .padStart(2, '0')}`}
             className='mt-1 h-1 w-full bg-gray-200 rounded-full overflow-hidden'
             style={{
               WebkitUserSelect: 'none',
@@ -1528,7 +1533,10 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
               return false;
             }}
           >
-            <div
+            <div 
+            title={`播放时间：${Math.floor(play_time / 60)}:${Math.floor(play_time % 60)
+              .toString()
+              .padStart(2, '0')}`}
               className='h-full bg-green-500 transition-all duration-500 ease-out'
               style={{
                 width: `${progress}%`,

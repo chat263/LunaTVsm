@@ -176,6 +176,7 @@ function ContinueWatching({ className }: ContinueWatchingProps) {
                       source={source}
                       source_name={record.source_name}
                       progress={getProgress(record)}
+                      play_time={record.play_time}
                       episodes={latestTotalEpisodes}
                       currentEpisode={record.index}
                       query={record.search_title}
