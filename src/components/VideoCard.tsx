@@ -1554,6 +1554,9 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
 
         {/* 标题与来源 */}
         <div
+        title={`播放时间：${Math.floor(play_time / 60)}:${Math.floor(play_time % 60)
+          .toString()
+          .padStart(2, '0')}`}
           className='mt-2 text-center'
           style={{
             WebkitUserSelect: 'none',
@@ -1566,6 +1569,9 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
           }}
         >
           <div
+          title={`播放时间：${Math.floor(play_time / 60)}:${Math.floor(play_time % 60)
+            .toString()
+            .padStart(2, '0')}`}
             className='relative px-1'
             style={{
               WebkitUserSelect: 'none',
@@ -1593,7 +1599,9 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
                 return false;
               }}
             >
-              {actualTitle}
+              {actualTitle}{` ${Math.floor(play_time / 60)}:${Math.floor(play_time % 60)
+            .toString()
+            .padStart(2, '0')}`}
             </span>
             {/* 增强的 tooltip */}
             <div
