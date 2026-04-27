@@ -43,6 +43,7 @@ import {
   Upload,
   Users,
   Video,
+  X,
 } from 'lucide-react';
 import { GripVertical, KeyRound, MessageSquare } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -6086,6 +6087,143 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
   );
 };
 
+// 直播源导入表单组件
+const LiveSourceImportForm = ({
+  onImport,
+  onCancel,
+}: {
+  onImport: (content: string, format: string, mode: 'merge' | 'replace') => Promise<void>;
+  onCancel: () => void;
+}) => {
+  const [content, setContent] = useState('');
+  const [format, setFormat] = useState('auto');
+  const [mode, setMode] = useState<'merge' | 'replace'>('merge');
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setContent(text);
+
+      if (file.name.endsWith('.m3u') || file.name.endsWith('.m3u8')) {
+        setFormat('m3u');
+      } else if (file.name.endsWith('.json')) {
+        setFormat('json');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!content.trim()) return;
+
+    setIsImporting(true);
+    try {
+      await onImport(content, format, mode);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <>
+      <div className='p-6 space-y-5 max-h-[60vh] overflow-y-auto'>
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+            导入方式
+          </label>
+          <div className='flex gap-4'>
+            <label className='flex items-center cursor-pointer'>
+              <input
+                type='radio'
+                checked={mode === 'merge'}
+                onChange={() => setMode('merge')}
+                className='mr-2 w-4 h-4 text-blue-600 focus:ring-blue-500'
+              />
+              <span className='text-sm text-gray-700 dark:text-gray-300'>合并（保留现有）</span>
+            </label>
+            <label className='flex items-center cursor-pointer'>
+              <input
+                type='radio'
+                checked={mode === 'replace'}
+                onChange={() => setMode('replace')}
+                className='mr-2 w-4 h-4 text-blue-600 focus:ring-blue-500'
+              />
+              <span className='text-sm text-gray-700 dark:text-gray-300'>替换（清空现有）</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+            文件格式
+          </label>
+          <select
+            value={format}
+            onChange={(e) => setFormat(e.target.value)}
+            className='w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all'
+          >
+            <option value='auto'>自动检测</option>
+            <option value='json'>JSON</option>
+            <option value='m3u'>M3U/M3U8</option>
+          </select>
+        </div>
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+            上传文件或粘贴内容
+          </label>
+          <input
+            type='file'
+            accept='.json,.m3u,.m3u8,.txt'
+            onChange={handleFileUpload}
+            className='mb-3 block w-full text-sm text-gray-500 dark:text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-lg file:border-0
+              file:text-sm file:font-semibold
+              file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100
+              dark:file:bg-blue-900/40 dark:file:text-blue-200
+              dark:hover:file:bg-blue-900/60
+              cursor-pointer'
+          />
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder='或直接粘贴 M3U/JSON 内容...'
+            rows={10}
+            className='w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all'
+          />
+          <p className='mt-1.5 text-xs text-gray-500 dark:text-gray-400'>
+            支持 M3U、M3U8 和 JSON 格式
+          </p>
+        </div>
+      </div>
+
+      <div className='flex gap-3 p-6 border-t border-gray-200 dark:border-gray-700'>
+        <button
+          onClick={handleSubmit}
+          disabled={!content.trim() || isImporting}
+          className={buttonStyles.success + ' flex-1 disabled:opacity-50 disabled:cursor-not-allowed'}
+        >
+          {isImporting ? '导入中...' : '开始导入'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={isImporting}
+          className={buttonStyles.secondary + ' disabled:opacity-50 disabled:cursor-not-allowed'}
+        >
+          取消
+        </button>
+      </div>
+    </>
+  );
+};
+
 // 直播源配置组件
 const LiveSourceConfig = ({
   config,
@@ -6101,6 +6239,25 @@ const LiveSourceConfig = ({
   const [editingLiveSource, setEditingLiveSource] = useState<LiveDataSource | null>(null);
   const [orderChanged, setOrderChanged] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [liveImportExportModal, setLiveImportExportModal] = useState<{
+    isOpen: boolean;
+    mode: 'import' | 'export' | 'result';
+    result?: {
+      success: number;
+      failed: number;
+      skipped: number;
+      details: Array<{
+        name: string;
+        key: string;
+        status: 'success' | 'failed' | 'skipped';
+        reason?: string;
+      }>;
+    };
+  }>({
+    isOpen: false,
+    mode: 'import',
+  });
+  const [showM3UImportForm, setShowM3UImportForm] = useState(false);
   const [newLiveSource, setNewLiveSource] = useState<LiveDataSource>({
     name: '',
     key: '',
@@ -6200,6 +6357,265 @@ const LiveSourceConfig = ({
         setIsRefreshing(false);
       }
     });
+  };
+
+  // 导出直播源
+  const handleExportLiveSources = (exportFormat: 'array' | 'config' = 'array') => {
+    try {
+      const customSources = liveSources.filter(s => s.from === 'custom');
+      if (customSources.length === 0) {
+        showAlert({
+          type: 'warning',
+          title: '没有可导出的直播源',
+          message: '请先添加自定义直播源后再导出',
+          timer: 2000
+        });
+        return;
+      }
+
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      let exportData: any;
+      let filename: string;
+
+      if (exportFormat === 'config') {
+        // 配置文件格式: {"lives": {...}}
+        const lives: Record<string, {
+          name: string;
+          url: string;
+          ua?: string;
+          epg?: string;
+        }> = {};
+
+        customSources.forEach((source) => {
+          const liveItem: {
+            name: string;
+            url: string;
+            ua?: string;
+            epg?: string;
+          } = {
+            name: source.name,
+            url: source.url,
+          };
+          if (source.ua) liveItem.ua = source.ua;
+          if (source.epg) liveItem.epg = source.epg;
+          lives[source.key] = liveItem;
+        });
+
+        exportData = { lives };
+        filename = `live_config_${timestamp}.json`;
+      } else {
+        // 数组格式
+        exportData = customSources.map((source) => ({
+          name: source.name,
+          key: source.key,
+          url: source.url,
+          epg: source.epg || '',
+          ua: source.ua || '',
+          disabled: source.disabled || false,
+        }));
+        filename = `live_sources_${timestamp}.json`;
+      }
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      const formatText = exportFormat === 'config' ? '配置文件格式' : '数组格式';
+      showAlert({
+        type: 'success',
+        title: '导出成功',
+        message: `已导出 ${customSources.length} 个直播源（${formatText}）到 ${filename}`,
+        timer: 3000,
+      });
+
+      setLiveImportExportModal({ isOpen: false, mode: 'export' });
+    } catch (err) {
+      showAlert({
+        type: 'error',
+        title: '导出失败',
+        message: err instanceof Error ? err.message : '未知错误',
+      });
+    }
+  };
+
+  // 导入直播源
+  const handleImportLiveSources = async (
+    file: File,
+    onProgress?: (current: number, total: number) => void
+  ) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      // 规范化导入数据
+      let importItems: any[] = [];
+      if (Array.isArray(parsed)) {
+        importItems = parsed;
+      } else if (parsed && typeof parsed === 'object') {
+        // 支持配置文件格式 {"lives": {...}}
+        const liveMap = parsed.lives && typeof parsed.lives === 'object' && !Array.isArray(parsed.lives)
+          ? parsed.lives
+          : parsed;
+
+        importItems = Object.entries(liveMap)
+          .filter(([, value]) => value && typeof value === 'object')
+          .map(([key, value]) => ({
+            key,
+            ...(value as Record<string, unknown>),
+          }))
+          .filter((item) => 'name' in item || 'url' in item);
+      }
+
+      if (importItems.length === 0) {
+        throw new Error('文件中没有可导入的直播源数据');
+      }
+
+      const result = {
+        success: 0,
+        failed: 0,
+        skipped: 0,
+        details: [] as Array<{
+          name: string;
+          key: string;
+          status: 'success' | 'failed' | 'skipped';
+          reason?: string;
+        }>,
+      };
+
+      const existingKeys = new Set(liveSources.map((source) => source.key));
+      const total = importItems.length;
+
+      for (let i = 0; i < importItems.length; i++) {
+        const rawItem = importItems[i] as Record<string, unknown>;
+        if (onProgress) {
+          onProgress(i + 1, total);
+        }
+
+        const key = typeof rawItem.key === 'string' ? rawItem.key.trim() : '';
+        const name = typeof rawItem.name === 'string' ? rawItem.name.trim() : '';
+        const url = typeof rawItem.url === 'string' ? rawItem.url.trim() : '';
+        const ua = typeof rawItem.ua === 'string' ? rawItem.ua.trim() : '';
+        const epg = typeof rawItem.epg === 'string' ? rawItem.epg.trim() : '';
+
+        if (!name || !key || !url) {
+          result.failed++;
+          result.details.push({
+            name: name || '未知',
+            key: key || '未知',
+            status: 'failed',
+            reason: '缺少必要字段（name、key 或 url）',
+          });
+          continue;
+        }
+
+        if (existingKeys.has(key)) {
+          result.skipped++;
+          result.details.push({
+            name,
+            key,
+            status: 'skipped',
+            reason: '该 key 已存在，跳过导入',
+          });
+          continue;
+        }
+
+        try {
+          await callLiveSourceApi({
+            action: 'add',
+            key,
+            name,
+            url,
+            ua,
+            epg,
+          });
+
+          existingKeys.add(key);
+          result.success++;
+          result.details.push({
+            name,
+            key,
+            status: 'success',
+          });
+        } catch (err) {
+          result.failed++;
+          result.details.push({
+            name,
+            key,
+            status: 'failed',
+            reason: err instanceof Error ? err.message : '导入失败',
+          });
+        }
+      }
+
+      setLiveImportExportModal({
+        isOpen: true,
+        mode: 'result',
+        result,
+      });
+
+      if (result.success > 0) {
+        await refreshConfig();
+      }
+
+      return result;
+    } catch (err) {
+      showAlert({
+        type: 'error',
+        title: '导入失败',
+        message: err instanceof Error ? err.message : '文件解析失败',
+      });
+      setLiveImportExportModal({ isOpen: false, mode: 'import' });
+      return {
+        success: 0,
+        failed: 0,
+        skipped: 0,
+        details: [],
+      };
+    }
+  };
+
+  // M3U 导入
+  const handleM3UImport = async (content: string, format: string, mode: 'merge' | 'replace') => {
+    try {
+      const response = await fetch('/api/admin/live/import-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, format, mode }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '导入失败');
+      }
+
+      const result = await response.json();
+
+      showAlert({
+        type: 'success',
+        title: '导入成功',
+        message: `成功导入 ${result.added} 个直播源，跳过 ${result.skipped} 个`,
+        timer: 3000,
+      });
+
+      setShowM3UImportForm(false);
+      await refreshConfig();
+    } catch (err) {
+      showAlert({
+        type: 'error',
+        title: '导入失败',
+        message: err instanceof Error ? err.message : '未知错误',
+      });
+      throw err;
+    }
   };
 
   const handleAddLiveSource = () => {
@@ -6430,6 +6846,27 @@ const LiveSourceConfig = ({
               }`}
           >
             <span>{isRefreshing || isLoading('refreshLiveSources') ? '刷新中...' : '刷新直播源'}</span>
+          </button>
+          <button
+            onClick={() => setLiveImportExportModal({ isOpen: true, mode: 'import' })}
+            className={buttonStyles.primary}
+          >
+            <Upload className='w-4 h-4 mr-1 inline' />
+            导入 JSON
+          </button>
+          <button
+            onClick={() => setShowM3UImportForm(true)}
+            className={buttonStyles.primary}
+          >
+            <Upload className='w-4 h-4 mr-1 inline' />
+            导入 M3U
+          </button>
+          <button
+            onClick={() => setLiveImportExportModal({ isOpen: true, mode: 'export' })}
+            className={buttonStyles.primary}
+          >
+            <Download className='w-4 h-4 mr-1 inline' />
+            导出
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -6792,6 +7229,54 @@ const LiveSourceConfig = ({
         showConfirm={alertModal.showConfirm}
       />
 
+      {/* M3U 导入模态框 */}
+      {showM3UImportForm && createPortal(
+        <div className='fixed inset-0 bg-black/60 backdrop-blur-sm z-9999 flex items-center justify-center p-4'>
+          <div className='bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden'>
+            <div className='relative px-5 py-4 bg-gradient-to-r from-blue-600 to-cyan-600'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center space-x-3'>
+                  <div className='bg-white/20 backdrop-blur-sm p-2 rounded-lg'>
+                    <Upload className='w-5 h-5 text-white' />
+                  </div>
+                  <div>
+                    <h2 className='text-lg font-bold text-white'>导入 M3U/M3U8</h2>
+                    <p className='text-white/80 text-xs mt-0.5'>支持 M3U、M3U8 和 JSON 格式</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowM3UImportForm(false)}
+                  className='text-white/80 hover:text-white hover:bg-white/20 p-1.5 rounded-lg transition-all'
+                >
+                  <X className='w-5 h-5' />
+                </button>
+              </div>
+            </div>
+            <LiveSourceImportForm
+              onImport={handleM3UImport}
+              onCancel={() => setShowM3UImportForm(false)}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 导入模态框 */}
+      {/* 直播源导入导出模态框 */}
+      <ImportExportModal
+        isOpen={liveImportExportModal.isOpen}
+        mode={liveImportExportModal.mode}
+        onClose={() => setLiveImportExportModal({ isOpen: false, mode: 'import' })}
+        onImport={handleImportLiveSources}
+        onExport={handleExportLiveSources}
+        result={liveImportExportModal.result}
+        entityName='直播源'
+        arrayFormatDescription='用于"直播源配置"卡片的导入功能，支持批量导入直播源'
+        configFormatDescription='用于"配置文件"卡片，可直接粘贴到配置文件编辑器中的 lives 字段'
+        configFormatExample='{"lives": {...}}'
+        arrayFilenameHint='live_sources_YYYYMMDD_HHMMSS.json'
+        configFilenameHint='live_config_YYYYMMDD_HHMMSS.json'
+      />
 
     </div>
   );
@@ -6812,7 +7297,7 @@ const NetDiskConfig = ({
     enabled: true,
     pansouUrl: 'https://so.252035.xyz',
     timeout: 30,
-    enabledCloudTypes: ['baidu', 'aliyun', 'quark', 'tianyi', 'uc', 'mobile', '115', 'pikpak', 'xunlei', '123', 'magnet', 'ed2k']
+    enabledCloudTypes: ['baidu', 'aliyun', 'quark', 'guangya', 'tianyi', 'uc', 'mobile', '115', 'pikpak', 'xunlei', '123', 'magnet', 'ed2k']
   });
 
   // 网盘类型选项
@@ -6820,6 +7305,7 @@ const NetDiskConfig = ({
     { key: 'baidu', name: '百度网盘', icon: '📁' },
     { key: 'aliyun', name: '阿里云盘', icon: '☁️' },
     { key: 'quark', name: '夸克网盘', icon: '⚡' },
+    { key: 'guangya', name: '光鸭云盘', icon: '🦆' },
     { key: 'tianyi', name: '天翼云盘', icon: '📱' },
     { key: 'uc', name: 'UC网盘', icon: '🌐' },
     { key: 'mobile', name: '移动云盘', icon: '📲' },
