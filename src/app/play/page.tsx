@@ -4866,8 +4866,12 @@ function PlayPageClient() {
 
                     // 🎯 动态弹幕密度控制 - 根据当前屏幕上的弹幕数量决定是否显示
                     const currentVisibleCount = document.querySelectorAll('.art-danmuku [data-state="emit"]').length;
-                    const maxConcurrentDanmu = devicePerformance === 'high' ? 60 :
-                                             devicePerformance === 'medium' ? 40 : 25;
+
+                    // 🎯 全屏时降低弹幕密度，避免控制栏卡顿
+                    const isFullscreen = artPlayerRef.current?.fullscreen;
+                    const maxConcurrentDanmu = isFullscreen
+                      ? (devicePerformance === 'high' ? 40 : devicePerformance === 'medium' ? 25 : 15)
+                      : (devicePerformance === 'high' ? 60 : devicePerformance === 'medium' ? 40 : 25);
 
                     if (currentVisibleCount >= maxConcurrentDanmu) {
                       // 🔥 当弹幕密度过高时，随机丢弃部分弹幕，保持流畅性
@@ -5630,12 +5634,35 @@ function PlayPageClient() {
         }
       });
 
-      // 监听全屏事件，进入全屏后自动隐藏控制栏 + 显示标题层
+      // 监听全屏事件，进入全屏后自动隐藏控制栏 + 显示标题层 + 应用透明度
       artPlayerRef.current.on('fullscreen', (isFullscreen: boolean) => {
         const titleLayer = artPlayerRef.current?.layers['fullscreen-title'];
         if (titleLayer) {
           titleLayer.style.display = isFullscreen ? 'block' : 'none';
         }
+
+        // 应用保存的透明度设置
+        const liquidGlass = artPlayerRef.current?.template?.$player?.querySelector('.art-liquid-glass') as HTMLElement | null;
+        if (liquidGlass) {
+          const savedOpacity = parseFloat(localStorage.getItem('control_bar_opacity') || '0.5');
+          if (isFullscreen) {
+            // 全屏：禁用 backdrop-filter，使用渐变 + 阴影（根据用户透明度调整）
+            liquidGlass.style.setProperty('backdrop-filter', 'none', 'important');
+            liquidGlass.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
+            liquidGlass.style.setProperty('background-color', 'transparent', 'important');
+            liquidGlass.style.setProperty('background-image', `linear-gradient(to top, rgba(0, 0, 0, ${savedOpacity}), rgba(0, 0, 0, ${savedOpacity * 0.6}), transparent)`, 'important');
+            liquidGlass.style.setProperty('box-shadow', `0 -10px 30px rgba(0, 0, 0, ${savedOpacity * 0.8})`, 'important');
+          } else {
+            // 非全屏：恢复毛玻璃效果
+            const blurAmount = Math.max(0, savedOpacity * 15);
+            liquidGlass.style.setProperty('backdrop-filter', `blur(${blurAmount}px)`, 'important');
+            liquidGlass.style.setProperty('-webkit-backdrop-filter', `blur(${blurAmount}px)`, 'important');
+            liquidGlass.style.setProperty('background-color', `rgba(0, 0, 0, ${savedOpacity})`, 'important');
+            liquidGlass.style.setProperty('background-image', 'none', 'important');
+            liquidGlass.style.setProperty('box-shadow', 'none', 'important');
+          }
+        }
+
         if (isFullscreen) {
           // 进入全屏后，延迟100ms触发控制栏自动隐藏
           setTimeout(() => {
@@ -6038,7 +6065,7 @@ function PlayPageClient() {
   return (
     <>
       <PageLayout activePath='/play'>
-      <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20'>
+      <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
         {/* 第一行：影片标题 */}
         <div className='py-1'>
           <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>
