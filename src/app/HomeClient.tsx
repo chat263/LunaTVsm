@@ -204,61 +204,94 @@ function HomeClient({ initialConfig }: {
   } = state;
 
   // 🚀 从 TanStack Query 获取首页数据，本地状态作为详情增强
+  // 🔥 保留上一次的数据，避免 refetch 时数据暂时为空导致 HeroBanner 卸载
+  const prevHotMoviesRef = useRef<any[]>([]);
   const hotMovies = useMemo(() => {
     const cached = homeData?.hotMovies || [];
+    // 如果有新数据，更新 ref 并返回
+    if (cached.length > 0) {
+      prevHotMoviesRef.current = cached;
+    }
+    // 如果新数据为空且正在加载，使用上一次的数据
+    const dataToUse = cached.length === 0 && homeFetching ? prevHotMoviesRef.current : cached;
+
     // 合并本地详情数据
-    if (state.hotMovies.length > 0 && cached.length > 0) {
-      return cached.map(m => {
+    if (state.hotMovies.length > 0 && dataToUse.length > 0) {
+      return dataToUse.map(m => {
         const local = state.hotMovies.find(lm => lm.id === m.id);
         return local ? { ...m, ...local } : m;
       });
     }
-    return cached;
-  }, [homeData?.hotMovies, state.hotMovies]);
+    return dataToUse;
+  }, [homeData?.hotMovies, state.hotMovies, homeFetching]);
 
+  const prevHotTvShowsRef = useRef<any[]>([]);
   const hotTvShows = useMemo(() => {
     const cached = homeData?.hotTvShows || [];
-    if (state.hotTvShows.length > 0 && cached.length > 0) {
-      return cached.map(s => {
+    if (cached.length > 0) {
+      prevHotTvShowsRef.current = cached;
+    }
+    const dataToUse = cached.length === 0 && homeFetching ? prevHotTvShowsRef.current : cached;
+
+    if (state.hotTvShows.length > 0 && dataToUse.length > 0) {
+      return dataToUse.map(s => {
         const local = state.hotTvShows.find(ls => ls.id === s.id);
         return local ? { ...s, ...local } : s;
       });
     }
-    return cached;
-  }, [homeData?.hotTvShows, state.hotTvShows]);
+    return dataToUse;
+  }, [homeData?.hotTvShows, state.hotTvShows, homeFetching]);
 
+  const prevHotVarietyShowsRef = useRef<any[]>([]);
   const hotVarietyShows = useMemo(() => {
     const cached = homeData?.hotVarietyShows || [];
-    if (state.hotVarietyShows.length > 0 && cached.length > 0) {
-      return cached.map(s => {
+    if (cached.length > 0) {
+      prevHotVarietyShowsRef.current = cached;
+    }
+    const dataToUse = cached.length === 0 && homeFetching ? prevHotVarietyShowsRef.current : cached;
+
+    if (state.hotVarietyShows.length > 0 && dataToUse.length > 0) {
+      return dataToUse.map(s => {
         const local = state.hotVarietyShows.find(ls => ls.id === s.id);
         return local ? { ...s, ...local } : s;
       });
     }
-    return cached;
-  }, [homeData?.hotVarietyShows, state.hotVarietyShows]);
+    return dataToUse;
+  }, [homeData?.hotVarietyShows, state.hotVarietyShows, homeFetching]);
 
+  const prevHotAnimeRef = useRef<any[]>([]);
   const hotAnime = useMemo(() => {
     const cached = homeData?.hotAnime || [];
-    if (state.hotAnime.length > 0 && cached.length > 0) {
-      return cached.map(a => {
+    if (cached.length > 0) {
+      prevHotAnimeRef.current = cached;
+    }
+    const dataToUse = cached.length === 0 && homeFetching ? prevHotAnimeRef.current : cached;
+
+    if (state.hotAnime.length > 0 && dataToUse.length > 0) {
+      return dataToUse.map(a => {
         const local = state.hotAnime.find(la => la.id === a.id);
         return local ? { ...a, ...local } : a;
       });
     }
-    return cached;
-  }, [homeData?.hotAnime, state.hotAnime]);
+    return dataToUse;
+  }, [homeData?.hotAnime, state.hotAnime, homeFetching]);
 
+  const prevHotShortDramasRef = useRef<any[]>([]);
   const hotShortDramas = useMemo(() => {
     const cached = homeData?.hotShortDramas || [];
-    if (state.hotShortDramas.length > 0 && cached.length > 0) {
-      return cached.map(d => {
+    if (cached.length > 0) {
+      prevHotShortDramasRef.current = cached;
+    }
+    const dataToUse = cached.length === 0 && homeFetching ? prevHotShortDramasRef.current : cached;
+
+    if (state.hotShortDramas.length > 0 && dataToUse.length > 0) {
+      return dataToUse.map(d => {
         const local = state.hotShortDramas.find(ld => ld.id === d.id);
         return local ? { ...d, ...local } : d;
       });
     }
-    return cached;
-  }, [homeData?.hotShortDramas, state.hotShortDramas]);
+    return dataToUse;
+  }, [homeData?.hotShortDramas, state.hotShortDramas, homeFetching]);
 
   const bangumiCalendarData = homeData?.bangumiCalendar || [];
 
@@ -694,12 +727,18 @@ function HomeClient({ initialConfig }: {
 
   // 🔥 Show cinematic loading screen while data is being fetched
   // This ensures users see the beautiful loading animation instead of skeleton screens
-  if (loading) {
-    return <CinematicLoadingFallback />;
-  }
+  // 🔥 Use overlay instead of unmounting to prevent component remount issues
+  const showCinematicLoading = loading;
 
   return (
     <PageLayout>
+      {/* 🔥 Cinematic loading overlay - doesn't unmount content */}
+      {showCinematicLoading && (
+        <div className="fixed inset-0 z-50">
+          <CinematicLoadingFallback />
+        </div>
+      )}
+
       {/* Telegram 新用户欢迎弹窗 */}
       <TelegramWelcomeModal />
 
@@ -1183,7 +1222,7 @@ function HomeClient({ initialConfig }: {
             // 首页视图
             <>
               {/* Hero Banner 轮播 */}
-              {state.homePageConfig.showHeroBanner && !loading && (hotMovies.length > 0 || hotTvShows.length > 0 || hotVarietyShows.length > 0 || hotShortDramas.length > 0) && (
+              {state.homePageConfig.showHeroBanner && (hotMovies.length > 0 || hotTvShows.length > 0 || hotVarietyShows.length > 0 || hotShortDramas.length > 0) && (
                 <section className='mb-8'>
                   <HeroBanner
                     items={[
@@ -1257,7 +1296,7 @@ function HomeClient({ initialConfig }: {
                 console.log('🔍 即将上映 section 渲染检查:', { loading, upcomingReleasesCount: upcomingReleases.length });
                 return null;
               })()}
-              {state.homePageConfig.showUpcomingReleases && !loading && upcomingReleases.length > 0 && (
+              {state.homePageConfig.showUpcomingReleases && upcomingReleases.length > 0 && (
                 <section className='mb-8'>
                   <div className='mb-4 flex items-center justify-between'>
                     <SectionTitle title="即将上映" icon={Calendar} iconColor="text-orange-500" />

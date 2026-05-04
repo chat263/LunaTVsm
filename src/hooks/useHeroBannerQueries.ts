@@ -52,19 +52,32 @@ export function useRefreshTrailerUrlMutation() {
   return useMutation<
     string | null,
     Error,
-    { doubanId: number | string }
+    { doubanId: number | string; force?: boolean }
   >({
-    mutationFn: async ({ doubanId }) => {
-      console.log('[HeroBanner] 检测到trailer URL过期，重新获取:', doubanId);
+    mutationFn: async ({ doubanId, force = false }) => {
+      console.log('[HeroBanner] 检测到trailer URL过期，重新获取:', doubanId, force ? '(强制刷新)' : '');
 
-      const response = await fetch(`/api/douban/refresh-trailer?id=${doubanId}`);
+      const url = `/api/douban/refresh-trailer?id=${doubanId}${force ? '&force=true' : ''}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      // 如果是404且明确标记为NO_TRAILER，记录并返回特殊标记（带时间戳，24小时后重试）
+      if (response.status === 404 && data.error === 'NO_TRAILER') {
+        console.warn('[HeroBanner] 该影片没有预告片，记录状态避免重复请求');
+        return `NO_TRAILER_${Date.now()}`;
+      }
+
+      // 如果是500或其他服务端错误，记录失败状态和时间戳，避免短时间内重复请求
+      if (response.status >= 500) {
+        console.error('[HeroBanner] 服务端错误，记录失败状态:', response.status);
+        return `FAILED_${Date.now()}`;
+      }
 
       if (!response.ok) {
         console.error('[HeroBanner] 刷新trailer URL失败:', response.status);
         return null;
       }
 
-      const data = await response.json();
       if (data.code === 200 && data.data?.trailerUrl) {
         console.log('[HeroBanner] 成功获取新的trailer URL');
         return data.data.trailerUrl;
@@ -75,7 +88,7 @@ export function useRefreshTrailerUrlMutation() {
     },
     onSuccess: (newUrl, { doubanId }) => {
       if (newUrl) {
-        // Update query cache with new URL
+        // Update query cache with new URL, NO_TRAILER marker, or FAILED marker
         queryClient.setQueryData<Record<string, string>>(
           ['refreshedTrailerUrls'],
           (prev = {}) => {
