@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { DEFAULT_USER_AGENT } from '@/lib/user-agent';
-import { isVideoCached, getCachedVideoPath, cacheVideoContent, deleteVideoCache, getKvrocksClient } from '@/lib/video-cache';
+import { isVideoCached, getCachedVideoPath, cacheVideoContent, deleteVideoCache } from '@/lib/video-cache';
 import { promises as fs } from 'fs';
 import { createReadStream } from 'fs';
+import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
@@ -136,8 +137,7 @@ export async function GET(request: Request) {
               console.log(`[VideoProxy] 视频文件不存在，清除 Redis URL 缓存: trailer:${doubanId}`);
               // 🔥 清除 refresh-trailer 的 Redis URL 缓存，下次请求会获取新 URL
               try {
-                const redis = await getKvrocksClient();
-                await redis.del(`trailer:${doubanId}`);
+                await db.deleteCache(`trailer:${doubanId}`);
                 console.log(`[VideoProxy] ✅ 已清除 Redis URL 缓存: trailer:${doubanId}`);
               } catch (err) {
                 console.error('[VideoProxy] 清除 Redis URL 缓存失败:', err);
