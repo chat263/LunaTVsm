@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 
 
 import { useDownload } from '@/contexts/DownloadContext';
+import { normalizeDownloadSource } from '@/lib/download';
 import { useDanmu } from '@/hooks/useDanmu';
 import type { DanmuManualOverride } from '@/hooks/useDanmu';
 import DownloadEpisodeSelector from '@/components/download/DownloadEpisodeSelector';
@@ -6737,12 +6738,10 @@ function PlayPageClient() {
             return;
           }
           try {
-            // 从 M3U8 URL 提取 origin 和 referer
-            const urlObj = new URL(currentUrl);
-            const origin = `${urlObj.protocol}//${urlObj.host}`;
-            const referer = currentUrl;
+            // 使用规范化工具提取 origin 和 referer
+            const { sourceUrl, referer, origin } = normalizeDownloadSource(currentUrl);
 
-            await createTask(currentUrl, videoTitle || '视频', 'TS', {
+            await createTask(sourceUrl, videoTitle || '视频', 'TS', {
               referer,
               origin,
             });
@@ -6822,12 +6821,10 @@ function PlayPageClient() {
             const episodeName = `第${episodeIndex + 1}集`;
             const downloadTitle = `${videoTitle || '视频'}_${episodeName}`;
 
-            // 从 M3U8 URL 提取 origin 和 referer
-            const urlObj = new URL(episodeUrl);
-            const origin = `${urlObj.protocol}//${urlObj.host}`;
-            const referer = episodeUrl;
+            // 使用规范化工具提取 origin 和 referer
+            const { sourceUrl, referer, origin } = normalizeDownloadSource(episodeUrl);
 
-            await createTask(episodeUrl, downloadTitle, 'TS', {
+            await createTask(sourceUrl, downloadTitle, 'TS', {
               referer,
               origin,
             });
