@@ -353,21 +353,36 @@ function HeroBanner({
                     const errorMessage = error?.message;
                     const networkState = video.networkState;
                     const readyState = video.readyState;
+                    const errorType = errorCode === 1 ? 'ABORTED' :
+                                     errorCode === 2 ? 'NETWORK' :
+                                     errorCode === 3 ? 'DECODE' :
+                                     errorCode === 4 ? 'SRC_NOT_SUPPORTED' : 'UNKNOWN';
 
-                    console.error('[HeroBanner] 视频加载失败:', {
+                    const errorData = {
                       title: item.title,
+                      douban_id: item.douban_id,
                       trailerUrl: item.trailerUrl,
                       effectiveUrl: getEffectiveTrailerUrl(item),
                       errorCode,
                       errorMessage,
                       networkState,
                       readyState,
-                      // MediaError codes: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
-                      errorType: errorCode === 1 ? 'ABORTED' :
-                                errorCode === 2 ? 'NETWORK' :
-                                errorCode === 3 ? 'DECODE' :
-                                errorCode === 4 ? 'SRC_NOT_SUPPORTED' : 'UNKNOWN',
-                    });
+                      errorType,
+                    };
+
+                    console.error('[HeroBanner] 视频加载失败:', errorData);
+
+                    // 发送错误日志到服务端（不阻塞，静默失败）
+                    fetch('/api/client-log', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        level: 'error',
+                        message: `视频加载失败: ${item.title}`,
+                        data: errorData,
+                        timestamp: Date.now(),
+                      }),
+                    }).catch(() => {}); // 静默失败，不影响用户体验
 
                     // 检测是否是403错误（trailer URL过期）
                     if (item.douban_id) {
