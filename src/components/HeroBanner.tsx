@@ -57,6 +57,9 @@ function HeroBanner({
   // 记录每个 video 元素的 onError 触发时间（防止同一个 video 的 onError 被多次触发）
   const videoErrorTimesRef = useRef<Record<string, number>>({});
 
+  // 🔥 记录已经请求过的 trailer ID，避免重复请求
+  const requestedTrailerIdsRef = useRef<Set<string>>(new Set());
+
   // 获取上次强制刷新时间
   const getLastForceRefreshTime = (doubanId: string): number => {
     if (typeof window === 'undefined') return 0;
@@ -251,14 +254,22 @@ function HeroBanner({
 
       for (const index of indicesToLoad) {
         const item = items[index];
-        if (!item) continue;
+        if (!item || !item.douban_id) continue;
 
+        const doubanIdStr = item.douban_id.toString();
+
+        // 🔥 如果已经请求过，跳过（避免重复请求）
+        if (requestedTrailerIdsRef.current.has(doubanIdStr)) {
+          continue;
+        }
+
+        // 🔥 从 React Query 缓存中获取最新值
         const cachedValue = refreshedTrailerUrls[item.douban_id];
 
-        // 🔥 如果 React Query 缓存中没有 URL，主动获取
-        // 不管 item.trailerUrl 是否存在，因为它可能是过期的
-        if (item.douban_id && !cachedValue) {
+        // 🔥 只在没有缓存时才请求
+        if (!cachedValue) {
           console.log('[HeroBanner] 延迟加载 trailer:', item.title);
+          requestedTrailerIdsRef.current.add(doubanIdStr);
           await refreshTrailerUrl(item.douban_id);
         } else if (cachedValue?.startsWith('NO_TRAILER_')) {
           // 检查无预告片标记的时间戳，24小时后重试
@@ -266,6 +277,7 @@ function HeroBanner({
           const now = Date.now();
           if (now - markedTime > NO_TRAILER_COOLDOWN) {
             console.log('[HeroBanner] 无预告片标记已过期（24小时），重新尝试:', item.title);
+            requestedTrailerIdsRef.current.add(doubanIdStr);
             await refreshTrailerUrl(item.douban_id);
           }
         } else if (cachedValue?.startsWith('FAILED_')) {
@@ -274,6 +286,7 @@ function HeroBanner({
           const now = Date.now();
           if (now - failedTime > RETRY_COOLDOWN) {
             console.log('[HeroBanner] 失败冷却期已过，重新尝试:', item.title);
+            requestedTrailerIdsRef.current.add(doubanIdStr);
             await refreshTrailerUrl(item.douban_id);
           }
         }
@@ -283,7 +296,7 @@ function HeroBanner({
     // 延迟执行，避免阻塞初始渲染
     const timer = setTimeout(checkAndRefreshVisibleTrailers, 1000);
     return () => clearTimeout(timer);
-  }, [items, currentIndex, refreshedTrailerUrls, refreshTrailerUrl, enableVideo]);
+  }, [items, currentIndex, refreshTrailerUrl, enableVideo, refreshedTrailerUrls]);
 
   return (
     <div
@@ -415,6 +428,9 @@ function HeroBanner({
                       if (refreshedTrailerUrls[item.douban_id]) {
                         clearTrailerMutation.mutate({ doubanId: item.douban_id });
                       }
+
+                      // 🔥 清除请求记录，允许重新请求
+                      requestedTrailerIdsRef.current.delete(doubanIdStr);
 
                       // 重新刷新URL（强制刷新，跳过服务端缓存）
                       console.log(`[HeroBanner] 强制刷新 trailer URL: ${item.title}`);
