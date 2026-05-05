@@ -36,6 +36,15 @@ const CACHE_TTL = {
 // 正在进行的请求（防止并发重复请求导致缓存击穿）
 const pendingRequests = new Map<string, Promise<TrailerCache>>();
 
+// 全局限流：记录上次请求豆瓣的时间
+let lastDoubanRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 3000; // 每次请求豆瓣至少间隔 3 秒
+
+// Redis 限流配置
+const RATE_LIMIT_KEY = 'douban:refresh-trailer:rate-limit';
+const RATE_LIMIT_WINDOW = 60; // 时间窗口：60 秒
+const RATE_LIMIT_MAX_REQUESTS = 10; // 每分钟最多 10 个请求
+
 // 获取缓存 key
 function getCacheKey(id: string): string {
   return `trailer:${id}`;
@@ -71,6 +80,59 @@ async function clearCache(id: string): Promise<void> {
   } catch (error) {
     console.error('[refresh-trailer] Redis 删除失败:', error);
   }
+}
+
+// 检查全局限流
+async function checkRateLimit(): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+  try {
+    // 获取当前时间窗口内的请求次数
+    const count = await db.getCache(RATE_LIMIT_KEY) as number | null;
+    const currentCount = count || 0;
+
+    if (currentCount >= RATE_LIMIT_MAX_REQUESTS) {
+      return {
+        allowed: false,
+        remaining: 0,
+        resetIn: RATE_LIMIT_WINDOW,
+      };
+    }
+
+    return {
+      allowed: true,
+      remaining: RATE_LIMIT_MAX_REQUESTS - currentCount - 1,
+      resetIn: RATE_LIMIT_WINDOW,
+    };
+  } catch (error) {
+    console.error('[refresh-trailer] 检查限流失败:', error);
+    // 限流检查失败时允许请求（降级策略）
+    return { allowed: true, remaining: 0, resetIn: 0 };
+  }
+}
+
+// 增加限流计数
+async function incrementRateLimit(): Promise<void> {
+  try {
+    const count = await db.getCache(RATE_LIMIT_KEY) as number | null;
+    const newCount = (count || 0) + 1;
+    await db.setCache(RATE_LIMIT_KEY, newCount, RATE_LIMIT_WINDOW);
+    console.log(`[refresh-trailer] 限流计数: ${newCount}/${RATE_LIMIT_MAX_REQUESTS} (${RATE_LIMIT_WINDOW}秒窗口)`);
+  } catch (error) {
+    console.error('[refresh-trailer] 更新限流计数失败:', error);
+  }
+}
+
+// 等待全局请求间隔
+async function waitForRequestInterval(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastDoubanRequestTime;
+
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+    console.log(`[refresh-trailer] 全局限流：等待 ${waitTime}ms 后请求豆瓣`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+
+  lastDoubanRequestTime = Date.now();
 }
 
 // 带重试的获取函数
@@ -322,7 +384,43 @@ export async function GET(request: Request) {
   }
 
   // 3. 缓存未命中或强制刷新，请求豆瓣 API
-  // 检查是否已有相同 ID 的请求正在进行（防止并发重复请求）
+  // 3.1 检查全局限流
+  const rateLimitCheck = await checkRateLimit();
+  if (!rateLimitCheck.allowed) {
+    console.warn(`[refresh-trailer] 触发限流：已达到每分钟 ${RATE_LIMIT_MAX_REQUESTS} 次请求上限，${rateLimitCheck.resetIn}秒后重置`);
+
+    const rateLimitResponse = {
+      code: 429,
+      message: '请求过于频繁，请稍后再试',
+      error: 'RATE_LIMIT_EXCEEDED',
+      details: `每分钟最多 ${RATE_LIMIT_MAX_REQUESTS} 次请求，${rateLimitCheck.resetIn}秒后重置`,
+    };
+    const rateLimitSize = Buffer.byteLength(JSON.stringify(rateLimitResponse), 'utf8');
+
+    recordRequest({
+      timestamp: startTime,
+      method: 'GET',
+      path: '/api/douban/refresh-trailer',
+      statusCode: 429,
+      duration: Date.now() - startTime,
+      memoryUsed: (process.memoryUsage().heapUsed - startMemory) / 1024 / 1024,
+      dbQueries: 0,
+      requestSize: 0,
+      responseSize: rateLimitSize,
+    });
+
+    return NextResponse.json(rateLimitResponse, {
+      status: 429,
+      headers: {
+        'Retry-After': rateLimitCheck.resetIn.toString(),
+        'X-RateLimit-Limit': RATE_LIMIT_MAX_REQUESTS.toString(),
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': (Date.now() + rateLimitCheck.resetIn * 1000).toString(),
+      },
+    });
+  }
+
+  // 3.2 检查是否已有相同 ID 的请求正在进行（防止并发重复请求）
   const existingRequest = pendingRequests.get(id);
   if (existingRequest) {
     console.log(`[refresh-trailer] 检测到正在进行的请求，等待结果: ${id}`);
@@ -380,6 +478,12 @@ export async function GET(request: Request) {
   // 创建新的请求 Promise
   const requestPromise = (async (): Promise<TrailerCache> => {
     try {
+      // 等待全局请求间隔（防止请求过快）
+      await waitForRequestInterval();
+
+      // 增加限流计数
+      await incrementRateLimit();
+
       const trailerUrl = await fetchTrailerWithRetry(id);
 
       const cacheData: TrailerCache = {

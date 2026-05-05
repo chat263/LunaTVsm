@@ -48,6 +48,10 @@ function HeroBanner({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [videoLoaded, setVideoLoaded] = useState(false);
+
+  // 记录每个影片的上次强制刷新时间（防止频繁刷新）
+  const lastForceRefreshTime = useRef<Record<string, number>>({});
+  const FORCE_REFRESH_COOLDOWN = 60 * 1000; // 1 分钟冷却期
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // 🚀 TanStack Query - 刷新后的trailer URL缓存
@@ -316,6 +320,21 @@ function HeroBanner({
 
                     // 检测是否是403错误（trailer URL过期）
                     if (item.douban_id) {
+                      const doubanIdStr = item.douban_id.toString();
+                      const now = Date.now();
+                      const lastRefreshTime = lastForceRefreshTime.current[doubanIdStr] || 0;
+                      const timeSinceLastRefresh = now - lastRefreshTime;
+
+                      // 检查冷却期：如果距离上次强制刷新不到 1 分钟，跳过
+                      if (timeSinceLastRefresh < FORCE_REFRESH_COOLDOWN) {
+                        const remainingSeconds = Math.ceil((FORCE_REFRESH_COOLDOWN - timeSinceLastRefresh) / 1000);
+                        console.warn(`[HeroBanner] 影片 ${item.title} 强制刷新冷却中，${remainingSeconds}秒后可重试`);
+                        return;
+                      }
+
+                      // 记录本次强制刷新时间
+                      lastForceRefreshTime.current[doubanIdStr] = now;
+
                       // 如果缓存中有URL，说明之前刷新过，但现在又失败了
                       // 需要清除缓存中的旧URL，重新刷新
                       if (refreshedTrailerUrls[item.douban_id]) {
@@ -323,6 +342,7 @@ function HeroBanner({
                       }
 
                       // 重新刷新URL（强制刷新，跳过服务端缓存）
+                      console.log(`[HeroBanner] 强制刷新 trailer URL: ${item.title}`);
                       const newUrl = await refreshTrailerUrl(item.douban_id, true);
                       if (newUrl) {
                         // 重新加载视频
