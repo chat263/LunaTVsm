@@ -198,12 +198,11 @@ function HeroBanner({
     onSwipeRight: handlePrev,
   });
 
-  // 预加载背景图片（只预加载当前和相邻的图片，优化性能）
+  // 预加载背景图片（只预加载当前和后一个，优化性能）
   useEffect(() => {
-    // 预加载当前、前一张、后一张
+    // 预加载当前、后一张
     const indicesToPreload = [
       currentIndex,
-      (currentIndex - 1 + items.length) % items.length,
       (currentIndex + 1) % items.length,
     ];
 
@@ -244,9 +243,8 @@ function HeroBanner({
       const RETRY_COOLDOWN = 5 * 60 * 1000; // 5分钟冷却期（服务端错误）
       const NO_TRAILER_COOLDOWN = 24 * 60 * 60 * 1000; // 24小时冷却期（无预告片）
 
-      // 🔥 只预加载当前、前一个、后一个（共3个）
+      // 🔥 只预加载当前和后一个（用户通常向后滑动）
       const indicesToLoad = [
-        (currentIndex - 1 + items.length) % items.length, // 前一个
         currentIndex,                                      // 当前
         (currentIndex + 1) % items.length,                 // 后一个
       ];
