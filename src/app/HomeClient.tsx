@@ -160,6 +160,15 @@ function HomeClient({ initialConfig }: {
   // 🎯 优化：使用 useTransition 让 tab 切换不阻塞 UI
   const [isPending, startTransition] = useTransition();
 
+  // 🔥 所有 useState 必须在最前面，保证 Hook 调用顺序稳定
+  const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'movie' | 'tv' | 'anime' | 'shortdrama' | 'live' | 'variety'>('all');
+  const [favoriteSortBy, setFavoriteSortBy] = useState<'recent' | 'title' | 'rating'>('recent');
+  const [upcomingFilter, setUpcomingFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const [reminderFilter, setReminderFilter] = useState<'all' | 'upcoming' | 'today' | 'released'>('all');
+  const [showClearFavoritesDialog, setShowClearFavoritesDialog] = useState(false);
+  const [showClearRemindersDialog, setShowClearRemindersDialog] = useState(false);
+  const [requireClearConfirmation, setRequireClearConfirmation] = useState(false);
+
   // 🔥 使用 useMemo 确保 config 对象引用稳定，避免 hooks 数量变化
   const stableConfig = useMemo(() => ({
     showHotMovies: initialConfig.showHotMovies,
@@ -461,14 +470,6 @@ function HomeClient({ initialConfig }: {
         };
       });
   }, [allReminders]);
-
-  const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'movie' | 'tv' | 'anime' | 'shortdrama' | 'live' | 'variety'>('all');
-  const [favoriteSortBy, setFavoriteSortBy] = useState<'recent' | 'title' | 'rating'>('recent');
-  const [upcomingFilter, setUpcomingFilter] = useState<'all' | 'movie' | 'tv'>('all');
-  const [reminderFilter, setReminderFilter] = useState<'all' | 'upcoming' | 'today' | 'released'>('all');
-  const [showClearFavoritesDialog, setShowClearFavoritesDialog] = useState(false);
-  const [showClearRemindersDialog, setShowClearRemindersDialog] = useState(false);
-  const [requireClearConfirmation, setRequireClearConfirmation] = useState(false);
 
   // 🎯 优化：缓存收藏夹统计信息计算
   const favoriteStats = useMemo(() => {
