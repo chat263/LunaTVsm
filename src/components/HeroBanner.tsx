@@ -50,8 +50,38 @@ function HeroBanner({
   const [videoLoaded, setVideoLoaded] = useState(false);
 
   // 记录每个影片的上次强制刷新时间（防止频繁刷新）
-  const lastForceRefreshTime = useRef<Record<string, number>>({});
+  // 使用 localStorage 持久化，避免组件重新挂载时丢失
   const FORCE_REFRESH_COOLDOWN = 60 * 1000; // 1 分钟冷却期
+  const FORCE_REFRESH_STORAGE_KEY = 'hero-banner-force-refresh-times';
+
+  // 获取上次强制刷新时间
+  const getLastForceRefreshTime = (doubanId: string): number => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      const stored = localStorage.getItem(FORCE_REFRESH_STORAGE_KEY);
+      if (stored) {
+        const times = JSON.parse(stored) as Record<string, number>;
+        return times[doubanId] || 0;
+      }
+    } catch (e) {
+      console.error('[HeroBanner] 读取强制刷新时间失败:', e);
+    }
+    return 0;
+  };
+
+  // 设置上次强制刷新时间
+  const setLastForceRefreshTime = (doubanId: string, time: number): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(FORCE_REFRESH_STORAGE_KEY);
+      const times = stored ? JSON.parse(stored) : {};
+      times[doubanId] = time;
+      localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, JSON.stringify(times));
+    } catch (e) {
+      console.error('[HeroBanner] 保存强制刷新时间失败:', e);
+    }
+  };
+
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // 🚀 TanStack Query - 刷新后的trailer URL缓存
@@ -322,7 +352,7 @@ function HeroBanner({
                     if (item.douban_id) {
                       const doubanIdStr = item.douban_id.toString();
                       const now = Date.now();
-                      const lastRefreshTime = lastForceRefreshTime.current[doubanIdStr] || 0;
+                      const lastRefreshTime = getLastForceRefreshTime(doubanIdStr);
                       const timeSinceLastRefresh = now - lastRefreshTime;
 
                       // 检查冷却期：如果距离上次强制刷新不到 1 分钟，跳过
@@ -333,7 +363,7 @@ function HeroBanner({
                       }
 
                       // 记录本次强制刷新时间
-                      lastForceRefreshTime.current[doubanIdStr] = now;
+                      setLastForceRefreshTime(doubanIdStr, now);
 
                       // 如果缓存中有URL，说明之前刷新过，但现在又失败了
                       // 需要清除缓存中的旧URL，重新刷新
