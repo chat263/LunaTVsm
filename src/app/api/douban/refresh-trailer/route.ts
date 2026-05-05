@@ -284,8 +284,56 @@ export async function GET(request: Request) {
 
     // 记录本次强制刷新时间
     lastForceRefreshTime.set(id, now);
-    console.log(`[refresh-trailer] 强制刷新，清除缓存: ${id}`);
+    console.log(`[refresh-trailer] 强制刷新，清除 Redis 缓存: ${id}`);
     await clearCache(id);
+
+    // 🔥 即使是强制刷新，也先检查视频文件缓存（12小时）
+    // 如果本地有视频文件，直接返回，避免请求豆瓣 API
+    const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE;
+    if (storageType === 'kvrocks') {
+      try {
+        const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
+        const videoFileExists = await isVideoCached(tempUrl);
+
+        if (videoFileExists) {
+          console.log(`[refresh-trailer] 强制刷新但命中视频文件缓存: ${id}，返回代理 URL`);
+
+          const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}`;
+
+          const successResponse = {
+            code: 200,
+            message: '获取成功（视频文件缓存，跳过强制刷新）',
+            data: {
+              trailerUrl: cachedVideoUrl,
+            },
+          };
+          const responseSize = Buffer.byteLength(JSON.stringify(successResponse), 'utf8');
+
+          recordRequest({
+            timestamp: startTime,
+            method: 'GET',
+            path: '/api/douban/refresh-trailer',
+            statusCode: 200,
+            duration: Date.now() - startTime,
+            memoryUsed: (process.memoryUsage().heapUsed - startMemory) / 1024 / 1024,
+            dbQueries: 0,
+            requestSize: 0,
+            responseSize,
+          });
+
+          return NextResponse.json(successResponse, {
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+            },
+          });
+        }
+      } catch (error) {
+        console.error('[refresh-trailer] 检查视频文件缓存失败:', error);
+        // 继续执行，请求豆瓣 API
+      }
+    }
   } else {
     // 1. 检查 Redis URL 缓存
     const cached = await getCache(id);
