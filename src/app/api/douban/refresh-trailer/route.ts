@@ -298,7 +298,7 @@ export async function GET(request: Request) {
 
           // 返回代理 URL（使用占位符 URL，video-proxy 会根据 douban_id 找到实际文件）
           const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
-          const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}`;
+          const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}&douban_id=${id}`;
 
           const successResponse = {
             code: 200,
@@ -349,11 +349,23 @@ export async function GET(request: Request) {
 
       // 根据状态返回不同响应
       if (cached.status === 'success' && cached.url) {
+        // 🔥 确保返回的 URL 包含 douban_id（兼容旧缓存数据）
+        let trailerUrl = cached.url;
+        if (!trailerUrl.includes('douban_id=')) {
+          // 旧缓存数据，需要转换
+          if (trailerUrl.startsWith('/api/video-proxy?url=')) {
+            trailerUrl = `${trailerUrl}&douban_id=${id}`;
+          } else if (trailerUrl.includes('douban') || trailerUrl.includes('doubanio')) {
+            // 原始豆瓣 URL，需要包装
+            trailerUrl = `/api/video-proxy?url=${encodeURIComponent(trailerUrl)}&douban_id=${id}`;
+          }
+        }
+
         const successResponse = {
           code: 200,
           message: '获取成功（Redis 缓存）',
           data: {
-            trailerUrl: cached.url,
+            trailerUrl,
           },
         };
         const responseSize = Buffer.byteLength(JSON.stringify(successResponse), 'utf8');
@@ -427,15 +439,15 @@ export async function GET(request: Request) {
     const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE;
     if (storageType === 'kvrocks') {
       try {
-        // 构造一个临时 URL 用于检查缓存（只需要能提取 douban_id 即可）
-        const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
-        const videoFileExists = await isVideoCached(tempUrl);
+        // 🔥 使用豆瓣影片 ID 检查视频文件缓存
+        const videoFileExists = await isVideoCached('', id);
 
         if (videoFileExists) {
           console.log(`[refresh-trailer] 命中视频文件缓存: ${id}，返回代理 URL`);
 
           // 返回指向视频代理的 URL（video-proxy 会直接从本地文件返回）
-          const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}`;
+          const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
+          const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}&douban_id=${id}`;
 
           const successResponse = {
             code: 200,
