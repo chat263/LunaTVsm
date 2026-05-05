@@ -203,12 +203,9 @@ export async function getCachedVideoPath(videoUrl: string, doubanMovieId?: strin
   try {
     await fs.access(filePath);
 
-    // 更新元数据的 TTL（延长缓存时间）
-    const redis = await getKvrocksClient();
-    const metaKey = `${KEYS.VIDEO_META}${cacheKey}`;
-    await redis.expire(metaKey, CACHE_CONFIG.VIDEO_TTL);
-
     // 🚀 LRU: 更新访问时间（使用当前时间戳作为 score）
+    // 注意：不重置 TTL，让文件在 12 小时后自然过期，避免热门视频永久占用空间
+    const redis = await getKvrocksClient();
     const now = Date.now();
     await redis.zAdd(KEYS.VIDEO_LRU, [{ score: now, value: cacheKey }]);
     console.log(`[VideoCache] 更新 LRU 访问时间: ${cacheKey}`);
