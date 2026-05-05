@@ -371,6 +371,12 @@ function HomeClient({ initialConfig }: {
     }))
   ], [hotMovies, hotTvShows, hotVarietyShows, hotAnime]);
 
+  // 🚀 Memoize enableVideo to prevent HeroBanner remount
+  // Reading window.RUNTIME_CONFIG on every render can cause props to change
+  const enableVideo = useMemo(() => {
+    return !(window as any).RUNTIME_CONFIG?.DISABLE_HERO_TRAILER;
+  }, []); // Empty deps - only read once on mount
+
   // 🚀 计算 loading 状态：数据获取中且没有任何数据时显示 loading
   // 使用 isFetching 而不是 isLoading，确保即使有缓存也会在重新获取时显示 loading
   // 但只在没有数据时显示，避免有缓存数据时闪烁
@@ -1297,7 +1303,7 @@ function HomeClient({ initialConfig }: {
                     autoPlayInterval={8000}
                     showControls={true}
                     showIndicators={true}
-                    enableVideo={!(window as any).RUNTIME_CONFIG?.DISABLE_HERO_TRAILER}
+                    enableVideo={enableVideo}
                   />
                 </section>
               )}
