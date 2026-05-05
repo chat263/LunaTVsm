@@ -346,10 +346,27 @@ function HeroBanner({
                   preload="metadata"
                   onError={async (e) => {
                     const video = e.currentTarget;
+
+                    // 尝试获取更详细的错误信息
+                    const error = (video as any).error;
+                    const errorCode = error?.code;
+                    const errorMessage = error?.message;
+                    const networkState = video.networkState;
+                    const readyState = video.readyState;
+
                     console.error('[HeroBanner] 视频加载失败:', {
                       title: item.title,
                       trailerUrl: item.trailerUrl,
-                      error: e,
+                      effectiveUrl: getEffectiveTrailerUrl(item),
+                      errorCode,
+                      errorMessage,
+                      networkState,
+                      readyState,
+                      // MediaError codes: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
+                      errorType: errorCode === 1 ? 'ABORTED' :
+                                errorCode === 2 ? 'NETWORK' :
+                                errorCode === 3 ? 'DECODE' :
+                                errorCode === 4 ? 'SRC_NOT_SUPPORTED' : 'UNKNOWN',
                     });
 
                     // 检测是否是403错误（trailer URL过期）
@@ -364,6 +381,13 @@ function HeroBanner({
                         return;
                       }
                       videoErrorTimesRef.current[doubanIdStr] = now;
+
+                      // 只有在网络错误（可能是 403/404）时才尝试强制刷新
+                      // errorCode 2 = MEDIA_ERR_NETWORK
+                      if (errorCode !== 2) {
+                        console.warn(`[HeroBanner] 影片 ${item.title} 非网络错误（code=${errorCode}），不触发强制刷新`);
+                        return;
+                      }
 
                       const lastRefreshTime = getLastForceRefreshTime(doubanIdStr);
                       const timeSinceLastRefresh = now - lastRefreshTime;
