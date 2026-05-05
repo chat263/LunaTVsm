@@ -368,6 +368,8 @@ function HeroBanner({
                       networkState,
                       readyState,
                       errorType,
+                      // 记录当前时间，用于计算 URL 有效期
+                      failedAt: new Date().toISOString(),
                     };
 
                     console.error('[HeroBanner] 视频加载失败:', errorData);
@@ -378,7 +380,7 @@ function HeroBanner({
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         level: 'error',
-                        message: `视频加载失败: ${item.title}`,
+                        message: `视频加载失败: ${item.title} (douban_id: ${item.douban_id})`,
                         data: errorData,
                         timestamp: Date.now(),
                       }),

@@ -192,7 +192,8 @@ async function fetchTrailerWithRetry(id: string, retryCount = 0): Promise<string
     }
 
     const totalTime = Date.now() - startTime;
-    console.log(`[refresh-trailer] 影片 ${id} 成功获取trailer URL，总耗时: ${totalTime}ms`);
+    const fetchedAt = new Date().toISOString();
+    console.log(`[refresh-trailer] 影片 ${id} 成功获取trailer URL，总耗时: ${totalTime}ms，获取时间: ${fetchedAt}`);
 
     return trailerUrl;
   } catch (error) {
