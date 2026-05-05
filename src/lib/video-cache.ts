@@ -21,8 +21,9 @@ let kvrocksStorage: KvrocksStorage | null = null;
 
 /**
  * 获取 Kvrocks Redis 客户端实例
+ * 导出供其他模块使用
  */
-function getKvrocksClient() {
+export function getKvrocksClient() {
   if (!kvrocksStorage) {
     kvrocksStorage = new KvrocksStorage();
   }
