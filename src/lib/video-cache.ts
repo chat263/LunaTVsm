@@ -345,12 +345,22 @@ export async function cleanupExpiredCache(): Promise<void> {
 }
 
 /**
- * 删除指定 URL 的视频缓存
+ * 删除指定视频缓存
  * 用于处理视频 URL 过期的情况
- * 🚀 优化：添加 LRU 列表清理
+ * @param videoUrl 视频 URL（用于日志）
+ * @param doubanMovieId 豆瓣影片 ID（可选，优先使用）
  */
-export async function deleteVideoCache(videoUrl: string): Promise<void> {
-  const cacheKey = getCacheKey(videoUrl);
+export async function deleteVideoCache(videoUrl: string, doubanMovieId?: string | number): Promise<void> {
+  // 🔥 优先使用豆瓣影片 ID 作为缓存 Key
+  let cacheKey: string;
+  if (doubanMovieId) {
+    cacheKey = `movie_${doubanMovieId}`;
+    console.log(`[VideoCache] 使用豆瓣影片 ID 删除缓存: ${cacheKey}`);
+  } else {
+    cacheKey = getCacheKey(videoUrl);
+    console.log(`[VideoCache] 使用 URL hash 删除缓存: ${cacheKey.substring(0, 8)}...`);
+  }
+
   const filePath = getVideoCachePath(cacheKey);
 
   try {

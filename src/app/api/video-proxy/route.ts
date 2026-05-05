@@ -118,12 +118,29 @@ export async function GET(request: Request) {
     }
 
     if (!videoResponse.ok) {
-      // 🎯 如果是 403/404 等错误，删除可能过期的缓存
+      // 🎯 如果是 403/404 等错误，检查视频文件缓存
       if (storageType === 'kvrocks' && (videoResponse.status === 403 || videoResponse.status === 404)) {
-        console.log(`[VideoProxy] 视频URL返回 ${videoResponse.status}，删除缓存: ${videoUrl}`);
-        deleteVideoCache(videoUrl).catch(err => {
-          console.error('[VideoProxy] 删除缓存失败:', err);
-        });
+        console.log(`[VideoProxy] 视频URL返回 ${videoResponse.status}: ${videoUrl}`);
+
+        // 🔥 如果有 doubanId，检查视频文件是否存在
+        if (doubanId) {
+          try {
+            const videoFileExists = await isVideoCached('', doubanId);
+            if (videoFileExists) {
+              console.log(`[VideoProxy] URL过期但视频文件存在，返回缓存: movie_${doubanId}`);
+              const cachedPath = await getCachedVideoPath('', doubanId);
+              if (cachedPath) {
+                return serveVideoFromFile(cachedPath, request);
+              }
+            } else {
+              console.log(`[VideoProxy] 视频文件不存在，删除 Redis URL 缓存`);
+              // 视频文件不存在，删除 Redis URL 缓存（由 refresh-trailer 管理）
+              // 不需要调用 deleteVideoCache，因为文件本来就不存在
+            }
+          } catch (error) {
+            console.error('[VideoProxy] 检查视频文件缓存失败:', error);
+          }
+        }
       }
 
       const errorResponse = NextResponse.json(
