@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DEFAULT_USER_AGENT } from '@/lib/user-agent';
-import { isVideoCached, getCachedVideoPath, cacheVideoContent, cacheTrailerUrl, deleteVideoCache } from '@/lib/video-cache';
+import { isVideoCached, getCachedVideoPath, cacheVideoContent, deleteVideoCache } from '@/lib/video-cache';
 import { promises as fs } from 'fs';
 import { createReadStream } from 'fs';
 
@@ -198,13 +198,6 @@ export async function GET(request: Request) {
         cacheVideoContent(videoUrl, videoBuffer, contentType || 'video/mp4', doubanId || undefined).catch(err => {
           console.error('[VideoProxy] 缓存视频失败:', err);
         });
-
-        // 🎯 缓存 URL 映射（如果有 douban_id）
-        if (doubanId) {
-          cacheTrailerUrl(doubanId, videoUrl).catch(err => {
-            console.error('[VideoProxy] 缓存 trailer URL 失败:', err);
-          });
-        }
 
         console.log(`[VideoProxy] ✅ 视频已缓存: ${videoUrl.substring(0, 50)}...`);
 
