@@ -115,25 +115,45 @@ export async function isVideoCached(videoUrl: string, doubanMovieId?: string | n
 
     console.log(`[VideoCache] 检查缓存: cacheKey=${cacheKey}, metaKey=${metaKey}`);
 
-    // 检查元数据是否存在
-    const meta = await redis.get(metaKey);
-    if (!meta) {
-      console.log(`[VideoCache] 元数据不存在: ${cacheKey}`);
-      return false;
-    }
-
-    console.log(`[VideoCache] 元数据存在，检查文件: ${cacheKey}`);
-
-    // 检查文件是否存在
+    // 🔥 先检查文件是否存在（文件是主体）
     const filePath = getVideoCachePath(cacheKey);
     try {
       await fs.access(filePath);
-      console.log(`[VideoCache] ✅ 命中视频缓存: ${cacheKey}`);
+      console.log(`[VideoCache] ✅ 文件存在: ${cacheKey}`);
+
+      // 文件存在，检查元数据
+      const meta = await redis.get(metaKey);
+      if (!meta) {
+        console.log(`[VideoCache] 元数据不存在但文件存在，重建元数据: ${cacheKey}`);
+        // 🔥 重建元数据（文件存在但元数据丢失，可能是 Redis 重启）
+        const stats = await fs.stat(filePath);
+        const newMeta = JSON.stringify({
+          url: videoUrl,
+          cacheKey,
+          contentType: 'video/mp4',
+          size: stats.size,
+          cachedAt: Date.now(),
+        });
+        await redis.set(metaKey, newMeta);
+
+        // 添加到 LRU
+        const now = Date.now();
+        await redis.zAdd(KEYS.VIDEO_LRU, [{ score: now, value: cacheKey }]);
+      }
+
       return true;
     } catch {
-      // 文件不存在，清理元数据
-      console.log(`[VideoCache] 文件不存在，清理元数据: ${cacheKey}`);
-      await redis.del(metaKey);
+      // 文件不存在
+      console.log(`[VideoCache] 文件不存在: ${cacheKey}`);
+
+      // 如果元数据存在，清理它
+      const meta = await redis.get(metaKey);
+      if (meta) {
+        console.log(`[VideoCache] 清理孤儿元数据: ${cacheKey}`);
+        await redis.del(metaKey);
+        await redis.zRem(KEYS.VIDEO_LRU, [cacheKey]);
+      }
+
       return false;
     }
   } catch (error) {
