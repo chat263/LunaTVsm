@@ -113,7 +113,13 @@ function HeroBanner({
   };
 
   // 处理视频 URL，使用代理绕过防盗链
+  // 注意：refresh-trailer API 已经返回包含 douban_id 的代理 URL，这里只处理其他来源的 URL
   const getProxiedVideoUrl = (url: string) => {
+    // 如果已经是代理 URL，直接返回
+    if (url?.startsWith('/api/video-proxy')) {
+      return url;
+    }
+    // 其他豆瓣 URL 需要代理
     if (url?.includes('douban') || url?.includes('doubanio')) {
       return `/api/video-proxy?url=${encodeURIComponent(url)}`;
     }

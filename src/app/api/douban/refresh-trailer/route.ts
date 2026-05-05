@@ -576,8 +576,13 @@ export async function GET(request: Request) {
 
       const trailerUrl = await fetchTrailerWithRetry(id);
 
+      // 🔥 将豆瓣原始 URL 包装成代理 URL，并附带 douban_id
+      const proxiedUrl = trailerUrl
+        ? `/api/video-proxy?url=${encodeURIComponent(trailerUrl)}&douban_id=${id}`
+        : null;
+
       const cacheData: TrailerCache = {
-        url: trailerUrl,
+        url: proxiedUrl,
         status: 'success',
         timestamp: Date.now(),
       };
