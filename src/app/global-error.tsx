@@ -59,6 +59,17 @@ export default function GlobalError({
       console.error('无法保存全局崩溃日志:', e);
     }
 
+    // 发送到服务器
+    if (typeof window !== 'undefined') {
+      fetch('/api/crash-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(crashLog),
+      }).catch((err) => {
+        console.error('无法上报全局崩溃到服务器:', err);
+      });
+    }
+
     // 打印到控制台
     console.error('🔥🔥🔥 全局崩溃 (Root Layout):', crashLog);
   }, [error]);

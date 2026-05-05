@@ -20,21 +20,42 @@ export default function CrashLogsPage() {
   const [selectedLog, setSelectedLog] = useState<CrashLog | null>(null);
 
   useEffect(() => {
-    const storedLogs = localStorage.getItem('crash-logs');
-    if (storedLogs) {
-      try {
-        setLogs(JSON.parse(storedLogs));
-      } catch (e) {
-        console.error('无法解析崩溃日志:', e);
-      }
-    }
+    // 从服务器获取崩溃日志
+    fetch('/api/crash-report')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.crashLogs) {
+          setLogs(data.crashLogs);
+        }
+      })
+      .catch((err) => {
+        console.error('获取崩溃日志失败:', err);
+        // 降级到 localStorage
+        const storedLogs = localStorage.getItem('crash-logs');
+        if (storedLogs) {
+          try {
+            setLogs(JSON.parse(storedLogs));
+          } catch (e) {
+            console.error('无法解析崩溃日志:', e);
+          }
+        }
+      });
   }, []);
 
   const clearLogs = () => {
     if (confirm('确定要清除所有崩溃日志吗？')) {
-      localStorage.removeItem('crash-logs');
-      setLogs([]);
-      setSelectedLog(null);
+      // 清除服务器端日志
+      fetch('/api/crash-report', { method: 'DELETE' })
+        .then(() => {
+          // 同时清除 localStorage
+          localStorage.removeItem('crash-logs');
+          setLogs([]);
+          setSelectedLog(null);
+        })
+        .catch((err) => {
+          console.error('清除崩溃日志失败:', err);
+          alert('清除失败，请稍后重试');
+        });
     }
   };
 
