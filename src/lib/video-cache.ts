@@ -137,10 +137,21 @@ export async function cacheTrailerUrl(doubanId: string | number, url: string): P
 
 /**
  * 检查视频文件是否已缓存
+ * @param videoUrl 视频 URL
+ * @param doubanMovieId 豆瓣影片 ID（可选，优先使用）
  */
-export async function isVideoCached(videoUrl: string): Promise<boolean> {
+export async function isVideoCached(videoUrl: string, doubanMovieId?: string | number): Promise<boolean> {
   try {
-    const cacheKey = getCacheKey(videoUrl);
+    // 🔥 优先使用豆瓣影片 ID 作为缓存 Key
+    let cacheKey: string;
+    if (doubanMovieId) {
+      cacheKey = `movie_${doubanMovieId}`;
+      console.log(`[VideoCache] 使用豆瓣影片 ID 检查缓存: ${cacheKey}`);
+    } else {
+      cacheKey = getCacheKey(videoUrl);
+      console.log(`[VideoCache] 使用视频 URL 检查缓存: ${cacheKey}`);
+    }
+
     const redis = await getKvrocksClient();
     const metaKey = `${KEYS.VIDEO_META}${cacheKey}`;
 
@@ -175,9 +186,18 @@ export async function isVideoCached(videoUrl: string): Promise<boolean> {
 
 /**
  * 获取缓存的视频文件路径
+ * @param videoUrl 视频 URL
+ * @param doubanMovieId 豆瓣影片 ID（可选，优先使用）
  */
-export async function getCachedVideoPath(videoUrl: string): Promise<string | null> {
-  const cacheKey = getCacheKey(videoUrl);
+export async function getCachedVideoPath(videoUrl: string, doubanMovieId?: string | number): Promise<string | null> {
+  // 🔥 优先使用豆瓣影片 ID 作为缓存 Key
+  let cacheKey: string;
+  if (doubanMovieId) {
+    cacheKey = `movie_${doubanMovieId}`;
+  } else {
+    cacheKey = getCacheKey(videoUrl);
+  }
+
   const filePath = getVideoCachePath(cacheKey);
 
   try {
@@ -201,16 +221,30 @@ export async function getCachedVideoPath(videoUrl: string): Promise<string | nul
 
 /**
  * 缓存视频内容到文件系统
+ * @param videoUrl 视频 URL
+ * @param videoBuffer 视频内容
+ * @param contentType 内容类型
+ * @param doubanMovieId 豆瓣影片 ID（可选，用于生成稳定的文件名）
  */
 export async function cacheVideoContent(
   videoUrl: string,
   videoBuffer: Buffer,
-  contentType: string = 'video/mp4'
+  contentType: string = 'video/mp4',
+  doubanMovieId?: string | number
 ): Promise<string> {
   console.log(`[VideoCache] 开始缓存视频内容，大小: ${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB`);
   await ensureCacheDir();
 
-  const cacheKey = getCacheKey(videoUrl);
+  // 🔥 优先使用豆瓣影片 ID 作为缓存 Key，确保同一部影片只有一个视频文件
+  let cacheKey: string;
+  if (doubanMovieId) {
+    cacheKey = `movie_${doubanMovieId}`;
+    console.log(`[VideoCache] 使用豆瓣影片 ID 作为缓存 Key: ${cacheKey}`);
+  } else {
+    cacheKey = getCacheKey(videoUrl);
+    console.log(`[VideoCache] 使用视频 URL 生成缓存 Key: ${cacheKey}`);
+  }
+
   const filePath = getVideoCachePath(cacheKey);
   const fileSize = videoBuffer.length;
 

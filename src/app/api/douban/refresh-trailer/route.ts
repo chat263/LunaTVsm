@@ -284,20 +284,20 @@ export async function GET(request: Request) {
 
     // 记录本次强制刷新时间
     lastForceRefreshTime.set(id, now);
-    console.log(`[refresh-trailer] 强制刷新，清除 Redis 缓存: ${id}`);
-    await clearCache(id);
 
-    // 🔥 即使是强制刷新，也先检查视频文件缓存（12小时）
-    // 如果本地有视频文件，直接返回，避免请求豆瓣 API
+    // 🔥 强制刷新时，先检查视频文件缓存（12小时）
+    // 使用豆瓣影片 ID 检查，确保能找到缓存的视频文件
     const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE;
     if (storageType === 'kvrocks') {
       try {
-        const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
-        const videoFileExists = await isVideoCached(tempUrl);
+        // 使用豆瓣影片 ID 检查视频文件缓存
+        const videoFileExists = await isVideoCached('', id);
 
         if (videoFileExists) {
-          console.log(`[refresh-trailer] 强制刷新但命中视频文件缓存: ${id}，返回代理 URL`);
+          console.log(`[refresh-trailer] 强制刷新但命中视频文件缓存: ${id}，直接返回，不清除 Redis 缓存`);
 
+          // 返回代理 URL（使用占位符 URL，video-proxy 会根据 douban_id 找到实际文件）
+          const tempUrl = `https://vt1.doubanio.com/placeholder/M/${id}.mp4`;
           const cachedVideoUrl = `/api/video-proxy?url=${encodeURIComponent(tempUrl)}`;
 
           const successResponse = {
@@ -331,9 +331,13 @@ export async function GET(request: Request) {
         }
       } catch (error) {
         console.error('[refresh-trailer] 检查视频文件缓存失败:', error);
-        // 继续执行，请求豆瓣 API
+        // 继续执行，清除缓存并请求豆瓣
       }
     }
+
+    // 视频文件缓存未命中，清除 Redis 缓存，准备请求豆瓣
+    console.log(`[refresh-trailer] 强制刷新，清除 Redis 缓存: ${id}`);
+    await clearCache(id);
   } else {
     // 1. 检查 Redis URL 缓存
     const cached = await getCache(id);

@@ -204,13 +204,16 @@ export async function GET(request: Request) {
         const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
         console.log(`[VideoProxy] 视频下载完成，大小: ${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB`);
 
+        // 🎯 尝试从 referer 提取 douban_id（用于生成稳定的文件名）
+        const doubanId = extractDoubanIdFromReferer(request);
+
         // 异步缓存视频内容（不阻塞响应）
-        cacheVideoContent(videoUrl, videoBuffer, contentType || 'video/mp4').catch(err => {
+        // 🔥 传入 doubanId，确保同一部影片只有一个视频文件
+        cacheVideoContent(videoUrl, videoBuffer, contentType || 'video/mp4', doubanId || undefined).catch(err => {
           console.error('[VideoProxy] 缓存视频失败:', err);
         });
 
-        // 🎯 尝试缓存 URL 映射（如果能从 referer 提取 douban_id）
-        const doubanId = extractDoubanIdFromReferer(request);
+        // 🎯 缓存 URL 映射（如果有 douban_id）
         if (doubanId) {
           cacheTrailerUrl(doubanId, videoUrl).catch(err => {
             console.error('[VideoProxy] 缓存 trailer URL 失败:', err);
