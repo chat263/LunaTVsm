@@ -54,6 +54,9 @@ function HeroBanner({
   const FORCE_REFRESH_COOLDOWN = 60 * 1000; // 1 分钟冷却期
   const FORCE_REFRESH_STORAGE_KEY = 'hero-banner-force-refresh-times';
 
+  // 记录每个 video 元素的 onError 触发时间（防止同一个 video 的 onError 被多次触发）
+  const videoErrorTimesRef = useRef<Record<string, number>>({});
+
   // 获取上次强制刷新时间
   const getLastForceRefreshTime = (doubanId: string): number => {
     if (typeof window === 'undefined') return 0;
@@ -331,6 +334,7 @@ function HeroBanner({
               {/* 视频背景（如果启用且有预告片URL，加载完成后淡入） */}
               {enableVideo && getEffectiveTrailerUrl(item) && index === currentIndex && (
                 <video
+                  key={`video-${item.id}-${currentIndex}`}
                   ref={videoRef}
                   className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
                     videoLoaded ? 'opacity-100' : 'opacity-0'
@@ -352,6 +356,15 @@ function HeroBanner({
                     if (item.douban_id) {
                       const doubanIdStr = item.douban_id.toString();
                       const now = Date.now();
+
+                      // 防抖：如果同一个 video 的 onError 在 5 秒内被触发多次，忽略
+                      const lastErrorTime = videoErrorTimesRef.current[doubanIdStr] || 0;
+                      if (now - lastErrorTime < 5000) {
+                        console.warn(`[HeroBanner] 影片 ${item.title} onError 触发过于频繁，忽略`);
+                        return;
+                      }
+                      videoErrorTimesRef.current[doubanIdStr] = now;
+
                       const lastRefreshTime = getLastForceRefreshTime(doubanIdStr);
                       const timeSinceLastRefresh = now - lastRefreshTime;
 
