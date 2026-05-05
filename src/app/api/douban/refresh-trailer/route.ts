@@ -45,6 +45,10 @@ const RATE_LIMIT_KEY = 'douban:refresh-trailer:rate-limit';
 const RATE_LIMIT_WINDOW = 60; // 时间窗口：60 秒
 const RATE_LIMIT_MAX_REQUESTS = 10; // 每分钟最多 10 个请求
 
+// 强制刷新冷却期：防止同一个 ID 被多个客户端频繁强制刷新
+const lastForceRefreshTime = new Map<string, number>();
+const FORCE_REFRESH_COOLDOWN = 60 * 1000; // 60 秒冷却期
+
 // 获取缓存 key
 function getCacheKey(id: string): string {
   return `trailer:${id}`;
@@ -244,8 +248,41 @@ export async function GET(request: Request) {
     return NextResponse.json(errorResponse, { status: 400 });
   }
 
-  // 如果是强制刷新，清除缓存
+  // 如果是强制刷新，检查冷却期
   if (force) {
+    const now = Date.now();
+    const lastRefreshTime = lastForceRefreshTime.get(id) || 0;
+    const timeSinceLastRefresh = now - lastRefreshTime;
+
+    // 如果距离上次强制刷新不到 60 秒，拒绝请求
+    if (timeSinceLastRefresh < FORCE_REFRESH_COOLDOWN) {
+      const remainingSeconds = Math.ceil((FORCE_REFRESH_COOLDOWN - timeSinceLastRefresh) / 1000);
+      console.warn(`[refresh-trailer] 强制刷新冷却中: ${id}，${remainingSeconds}秒后可重试`);
+
+      const cooldownResponse = {
+        code: 429,
+        message: `强制刷新冷却中，${remainingSeconds}秒后可重试`,
+        error: 'FORCE_REFRESH_COOLDOWN',
+      };
+      const cooldownSize = Buffer.byteLength(JSON.stringify(cooldownResponse), 'utf8');
+
+      recordRequest({
+        timestamp: startTime,
+        method: 'GET',
+        path: '/api/douban/refresh-trailer',
+        statusCode: 429,
+        duration: Date.now() - startTime,
+        memoryUsed: (process.memoryUsage().heapUsed - startMemory) / 1024 / 1024,
+        dbQueries: 0,
+        requestSize: 0,
+        responseSize: cooldownSize,
+      });
+
+      return NextResponse.json(cooldownResponse, { status: 429 });
+    }
+
+    // 记录本次强制刷新时间
+    lastForceRefreshTime.set(id, now);
     console.log(`[refresh-trailer] 强制刷新，清除缓存: ${id}`);
     await clearCache(id);
   } else {
