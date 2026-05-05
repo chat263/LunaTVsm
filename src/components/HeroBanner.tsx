@@ -114,14 +114,19 @@ function HeroBanner({
 
   // 处理视频 URL，使用代理绕过防盗链
   // 注意：refresh-trailer API 已经返回包含 douban_id 的代理 URL，这里只处理其他来源的 URL
-  const getProxiedVideoUrl = (url: string) => {
+  const getProxiedVideoUrl = (url: string, doubanId?: string | number) => {
     // 如果已经是代理 URL，直接返回
     if (url?.startsWith('/api/video-proxy')) {
       return url;
     }
     // 其他豆瓣 URL 需要代理
     if (url?.includes('douban') || url?.includes('doubanio')) {
-      return `/api/video-proxy?url=${encodeURIComponent(url)}`;
+      const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(url)}`;
+      // 🔥 添加 douban_id 参数，确保使用 movie_ 文件名
+      if (doubanId) {
+        return `${proxyUrl}&douban_id=${doubanId}`;
+      }
+      return proxyUrl;
     }
     return url;
   };
@@ -252,8 +257,9 @@ function HeroBanner({
 
         const cachedValue = refreshedTrailerUrls[item.douban_id];
 
-        // 如果有 douban_id 但没有 trailerUrl，尝试获取
-        if (item.douban_id && !item.trailerUrl && !cachedValue) {
+        // 🔥 如果 React Query 缓存中没有 URL，主动获取
+        // 不管 item.trailerUrl 是否存在，因为它可能是过期的
+        if (item.douban_id && !cachedValue) {
           console.log('[HeroBanner] 延迟加载 trailer:', item.title);
           await refreshTrailerUrl(item.douban_id);
         } else if (cachedValue?.startsWith('NO_TRAILER_')) {
@@ -431,7 +437,7 @@ function HeroBanner({
                     });
                   }}
                 >
-                  <source src={getProxiedVideoUrl(getEffectiveTrailerUrl(item) || '')} type="video/mp4" />
+                  <source src={getProxiedVideoUrl(getEffectiveTrailerUrl(item) || '', item.douban_id)} type="video/mp4" />
                 </video>
               )}
             </div>

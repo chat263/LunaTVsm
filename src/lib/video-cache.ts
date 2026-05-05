@@ -65,16 +65,8 @@ function hashUrl(url: string): string {
  * 这样即使 URL 刷新（时间戳变化），只要是同一个视频就能命中缓存
  */
 function getCacheKey(videoUrl: string): string {
-  // 尝试从 URL 提取 douban_id
-  // 格式: https://vt1.doubanio.com/.../view/movie/M/703230269.mp4
-  const match = videoUrl.match(/\/M\/(\d+)\.mp4/);
-  if (match) {
-    const doubanId = match[1];
-    console.log(`[VideoCache] 使用 douban_id 作为缓存 Key: ${doubanId}`);
-    return `douban_${doubanId}`;
-  }
-
-  // 降级到 URL hash（非豆瓣视频）
+  // 🚫 不再从 URL 提取视频 ID，必须使用 doubanMovieId 参数
+  // 如果没有 doubanMovieId，使用 URL hash 作为降级方案
   const urlHash = hashUrl(videoUrl);
   console.log(`[VideoCache] 使用 URL hash 作为缓存 Key: ${urlHash.substring(0, 8)}...`);
   return urlHash;
