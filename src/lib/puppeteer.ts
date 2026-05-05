@@ -1,4 +1,8 @@
-import puppeteer, { Browser, Page } from 'puppeteer-core';
+// Puppeteer 已禁用以减少包体积（78MB）
+// 如需恢复，请安装依赖：pnpm add @sparticuz/chromium puppeteer-core
+// 然后取消下方所有注释
+
+// import puppeteer, { Browser, Page } from 'puppeteer-core';
 
 import { getRandomUserAgent, getRandomUserAgentWithInfo, getSecChUaHeaders } from './user-agent';
 
