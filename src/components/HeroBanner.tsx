@@ -228,39 +228,34 @@ function HeroBanner({
     enableVideo,
   });
 
-  // 🎯 检查并刷新缺失的 trailer URL（组件挂载时）
+  // 🎯 延迟加载：只预加载当前和相邻的 trailer URL
   useEffect(() => {
     // 如果禁用了视频，不需要刷新 trailer
     if (!enableVideo) {
       return;
     }
 
-    const checkAndRefreshMissingTrailers = async () => {
+    const checkAndRefreshVisibleTrailers = async () => {
       const RETRY_COOLDOWN = 5 * 60 * 1000; // 5分钟冷却期（服务端错误）
       const NO_TRAILER_COOLDOWN = 24 * 60 * 60 * 1000; // 24小时冷却期（无预告片）
-      const REQUEST_DELAY = 2000; // 每次请求之间延迟2秒，避免触发豆瓣限流
-      const MAX_REQUESTS_PER_SESSION = 3; // 每次最多请求3个，避免一次性请求过多
 
-      let requestCount = 0;
+      // 🔥 只预加载当前、前一个、后一个（共3个）
+      const indicesToLoad = [
+        (currentIndex - 1 + items.length) % items.length, // 前一个
+        currentIndex,                                      // 当前
+        (currentIndex + 1) % items.length,                 // 后一个
+      ];
 
-      for (const item of items) {
-        // 如果已经达到本次请求上限，跳过剩余项目
-        if (requestCount >= MAX_REQUESTS_PER_SESSION) {
-          console.log('[HeroBanner] 已达到本次请求上限，剩余项目将在下次检查');
-          break;
-        }
+      for (const index of indicesToLoad) {
+        const item = items[index];
+        if (!item) continue;
 
         const cachedValue = refreshedTrailerUrls[item.douban_id];
 
         // 如果有 douban_id 但没有 trailerUrl，尝试获取
         if (item.douban_id && !item.trailerUrl && !cachedValue) {
-          console.log('[HeroBanner] 检测到缺失的 trailer，尝试获取:', item.title);
+          console.log('[HeroBanner] 延迟加载 trailer:', item.title);
           await refreshTrailerUrl(item.douban_id);
-          requestCount++;
-          // 延迟后再请求下一个，避免触发豆瓣限流
-          if (requestCount < MAX_REQUESTS_PER_SESSION) {
-            await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
-          }
         } else if (cachedValue?.startsWith('NO_TRAILER_')) {
           // 检查无预告片标记的时间戳，24小时后重试
           const markedTime = parseInt(cachedValue.split('_')[2]);
@@ -268,13 +263,6 @@ function HeroBanner({
           if (now - markedTime > NO_TRAILER_COOLDOWN) {
             console.log('[HeroBanner] 无预告片标记已过期（24小时），重新尝试:', item.title);
             await refreshTrailerUrl(item.douban_id);
-            requestCount++;
-            if (requestCount < MAX_REQUESTS_PER_SESSION) {
-              await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
-            }
-          } else {
-            const remainingHours = Math.ceil((NO_TRAILER_COOLDOWN - (now - markedTime)) / 3600000);
-            console.log(`[HeroBanner] 该影片无预告片，${remainingHours}小时后重试:`, item.title);
           }
         } else if (cachedValue?.startsWith('FAILED_')) {
           // 检查失败时间戳，如果超过冷却期则重试
@@ -283,22 +271,15 @@ function HeroBanner({
           if (now - failedTime > RETRY_COOLDOWN) {
             console.log('[HeroBanner] 失败冷却期已过，重新尝试:', item.title);
             await refreshTrailerUrl(item.douban_id);
-            requestCount++;
-            if (requestCount < MAX_REQUESTS_PER_SESSION) {
-              await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
-            }
-          } else {
-            const remainingMinutes = Math.ceil((RETRY_COOLDOWN - (now - failedTime)) / 60000);
-            console.log(`[HeroBanner] 该影片获取失败，${remainingMinutes}分钟后重试:`, item.title);
           }
         }
       }
     };
 
     // 延迟执行，避免阻塞初始渲染
-    const timer = setTimeout(checkAndRefreshMissingTrailers, 1000);
+    const timer = setTimeout(checkAndRefreshVisibleTrailers, 1000);
     return () => clearTimeout(timer);
-  }, [items, refreshedTrailerUrls, refreshTrailerUrl, enableVideo]);
+  }, [items, currentIndex, refreshedTrailerUrls, refreshTrailerUrl, enableVideo]);
 
   return (
     <div
