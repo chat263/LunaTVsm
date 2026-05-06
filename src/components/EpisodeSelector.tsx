@@ -584,7 +584,6 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
         </>
       )}
 
-      // 换源 Tab 内容
       {activeTab === 'sources' && (
         <div className='flex flex-col h-full mt-4'>
           {/* 手动测速面板 */}
@@ -718,9 +717,9 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                         </div>
 
                         {/* 信息区域 */}
-                        <div className='flex-1 min-w-0 flex flex-col justify-between h-16 sm:h-20'>
-                          {/* 标题和分辨率 - 顶部 */}
-                          <div className='flex items-start justify-between gap-2 sm:gap-3 h-5 sm:h-6'>
+                        <div className='flex-1 min-w-0 flex flex-col justify-between h-16 sm:h-20 relative'>
+                          {/* 标题 - 顶部 */}
+                          <div className='flex items-start gap-2 sm:gap-3 h-5 sm:h-6'>
                             <div className='flex-1 min-w-0 relative group/title'>
                               <h3 className='font-medium text-sm sm:text-base truncate text-gray-900 dark:text-gray-100 leading-none'>
                                 {source.title}
@@ -733,67 +732,6 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                                 </div>
                               )}
                             </div>
-                            {(() => {
-                              const sourceKey = `${source.source}-${source.id}`;
-                              const videoInfo = videoInfoMap.get(sourceKey);
-                              const isTesting = testingSourceKeys.has(sourceKey);
-
-                              // 正在测试中
-                              if (isTesting) {
-                                return (
-                                  <div className='flex items-center gap-1 bg-blue-500/10 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-xs shrink-0'>
-                                    <RefreshCw className='w-3 h-3 animate-spin' />
-                                    <span>检测中</span>
-                                  </div>
-                                );
-                              }
-
-                              if (videoInfo) {
-                                if (videoInfo.hasError || videoInfo.status === 'failed') {
-                                  return (
-                                    <div className='bg-red-500/10 dark:bg-red-400/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded text-xs shrink-0 min-w-[60px] text-center'>
-                                      检测失败
-                                    </div>
-                                  );
-                                } else if (videoInfo.quality !== '未知') {
-                                  // 根据分辨率设置不同颜色和图标
-                                  const is4K = videoInfo.quality === '4K';
-                                  const is2K = videoInfo.quality === '2K';
-                                  const is1080p = videoInfo.quality === '1080p';
-                                  const is720p = videoInfo.quality === '720p';
-
-                                  let bgColor = 'bg-gray-500/10 dark:bg-gray-400/20';
-                                  let textColor = 'text-gray-600 dark:text-gray-400';
-
-                                  if (is4K || is2K) {
-                                    bgColor = 'bg-purple-500/10 dark:bg-purple-400/20';
-                                    textColor = 'text-purple-600 dark:text-purple-400';
-                                  } else if (is1080p || is720p) {
-                                    bgColor = 'bg-green-500/10 dark:bg-green-400/20';
-                                    textColor = 'text-green-600 dark:text-green-400';
-                                  } else if (videoInfo.quality === '480p' || videoInfo.quality === 'SD') {
-                                    bgColor = 'bg-yellow-500/10 dark:bg-yellow-400/20';
-                                    textColor = 'text-yellow-600 dark:text-yellow-400';
-                                  }
-
-                                  return (
-                                    <div className={`flex items-center gap-1 ${bgColor} ${textColor} px-2 py-0.5 rounded text-xs shrink-0 font-semibold`}>
-                                      <Wifi className='w-3 h-3' />
-                                      <span>{videoInfo.quality}</span>
-                                    </div>
-                                  );
-                                } else if (videoInfo.status === 'ok' || videoInfo.playable) {
-                                  return (
-                                    <div className='flex items-center gap-1 bg-green-500/10 dark:bg-green-400/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded text-xs shrink-0'>
-                                      <Wifi className='w-3 h-3' />
-                                      <span>已连通</span>
-                                    </div>
-                                  );
-                                }
-                              }
-
-                              return null;
-                            })()}
                           </div>
 
                           {/* 源名称和集数信息 - 垂直居中 */}
@@ -847,6 +785,69 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                               return null;
                             })()}
                           </div>
+
+                          {/* 质量徽章 - 右下角绝对定位 */}
+                          {(() => {
+                            const sourceKey = `${source.source}-${source.id}`;
+                            const videoInfo = videoInfoMap.get(sourceKey);
+                            const isTesting = testingSourceKeys.has(sourceKey);
+
+                            // 正在测试中
+                            if (isTesting) {
+                              return (
+                                <div className='absolute bottom-0 right-0 flex items-center gap-1 bg-blue-500/10 dark:bg-blue-400/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-xs shrink-0'>
+                                  <RefreshCw className='w-3 h-3 animate-spin' />
+                                  <span>检测中</span>
+                                </div>
+                              );
+                            }
+
+                            if (videoInfo) {
+                              if (videoInfo.hasError || videoInfo.status === 'failed') {
+                                return (
+                                  <div className='absolute bottom-0 right-0 bg-red-500/10 dark:bg-red-400/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded text-xs shrink-0 min-w-[60px] text-center'>
+                                    检测失败
+                                  </div>
+                                );
+                              } else if (videoInfo.quality !== '未知') {
+                                // 根据分辨率设置不同颜色和图标
+                                const is4K = videoInfo.quality === '4K';
+                                const is2K = videoInfo.quality === '2K';
+                                const is1080p = videoInfo.quality === '1080p';
+                                const is720p = videoInfo.quality === '720p';
+
+                                let bgColor = 'bg-gray-500/10 dark:bg-gray-400/20';
+                                let textColor = 'text-gray-600 dark:text-gray-400';
+
+                                if (is4K || is2K) {
+                                  bgColor = 'bg-purple-500/10 dark:bg-purple-400/20';
+                                  textColor = 'text-purple-600 dark:text-purple-400';
+                                } else if (is1080p || is720p) {
+                                  bgColor = 'bg-green-500/10 dark:bg-green-400/20';
+                                  textColor = 'text-green-600 dark:text-green-400';
+                                } else if (videoInfo.quality === '480p' || videoInfo.quality === 'SD') {
+                                  bgColor = 'bg-yellow-500/10 dark:bg-yellow-400/20';
+                                  textColor = 'text-yellow-600 dark:text-yellow-400';
+                                }
+
+                                return (
+                                  <div className={`absolute bottom-0 right-0 flex items-center gap-1 ${bgColor} ${textColor} px-2 py-0.5 rounded text-xs shrink-0 font-semibold`}>
+                                    <Wifi className='w-3 h-3' />
+                                    <span>{videoInfo.quality}</span>
+                                  </div>
+                                );
+                              } else if (videoInfo.status === 'ok' || videoInfo.playable) {
+                                return (
+                                  <div className='absolute bottom-0 right-0 flex items-center gap-1 bg-green-500/10 dark:bg-green-400/20 text-green-600 dark:text-green-400 px-2 py-0.5 rounded text-xs shrink-0'>
+                                    <Wifi className='w-3 h-3' />
+                                    <span>已连通</span>
+                                  </div>
+                                );
+                              }
+                            }
+
+                            return null;
+                          })()}
                         </div>
                       </div>
                     );
