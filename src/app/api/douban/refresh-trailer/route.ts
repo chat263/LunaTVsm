@@ -9,38 +9,42 @@ import { isVideoCached } from '@/lib/video-cache';
  *
  * 两层缓存策略：
  * 1. 视频文件缓存 - 本地已有视频文件时直接返回代理 URL（永久可用）
- * 2. Redis URL 缓存（5分钟）- 短期缓存，避免重复请求但不会返回过期 URL
- * 3. 豆瓣 API - 缓存都未命中时请求
+ * 2. 豆瓣 API - 本地文件不存在时请求豆瓣，下载并缓存视频文件
  *
- * Redis 缓存策略：
- * - success: 5分钟（短期缓存，避免重复请求）
+ * Redis 只缓存失败状态：
  * - no_trailer: 24小时（避免重复请求没有预告片的影片）
  * - failed: 5分钟（短暂缓存服务端错误）
  *
  * 优势：
  * - 本地文件永久可用，不受豆瓣 URL 过期影响
- * - 5分钟短期缓存避免用户浏览时重复请求
- * - URL 过期风险低（5分钟 << 30分钟有效期）
+ * - 不缓存 URL，避免"缓存了过期 URL"的问题
+ * - 大幅减少对豆瓣 API 的请求次数
  */
 
 // 缓存状态类型
-type CacheStatus = 'success' | 'no_trailer' | 'failed';
+type CacheStatus = 'no_trailer' | 'failed';
 
 interface TrailerCache {
-  url?: string | null;
   status: CacheStatus;
   timestamp: number;
 }
 
+// 成功结果（不缓存）
+interface TrailerSuccess {
+  url: string | null;
+  timestamp: number;
+}
+
+type TrailerResult = TrailerSuccess | TrailerCache;
+
 // 缓存 TTL 配置（秒）
 const CACHE_TTL = {
-  success: 5 * 60,                // 5分钟（短期缓存，避免重复请求）
   no_trailer: 24 * 60 * 60,       // 24小时（可能是即将上映）
   failed: 5 * 60,                 // 5分钟（服务端错误）
 };
 
 // 正在进行的请求（防止并发重复请求导致缓存击穿）
-const pendingRequests = new Map<string, Promise<TrailerCache>>();
+const pendingRequests = new Map<string, Promise<TrailerResult>>();
 
 // 全局限流：记录上次请求豆瓣的时间
 let lastDoubanRequestTime = 0;
@@ -428,7 +432,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. 检查 Redis URL 缓存（5分钟短期缓存）
+    // 2. 检查 Redis 失败状态缓存（no_trailer / failed）
     const cached = await getCache(id);
     if (cached) {
       const now = Date.now();
@@ -436,36 +440,7 @@ export async function GET(request: Request) {
 
       console.log(`[refresh-trailer] 命中 Redis 缓存: ${id}，状态: ${cached.status}，年龄: ${age}秒`);
 
-      if (cached.status === 'success' && cached.url) {
-        const successResponse = {
-          code: 200,
-          message: '获取成功（Redis 缓存）',
-          data: {
-            trailerUrl: cached.url,
-          },
-        };
-        const responseSize = Buffer.byteLength(JSON.stringify(successResponse), 'utf8');
-
-        recordRequest({
-          timestamp: startTime,
-          method: 'GET',
-          path: '/api/douban/refresh-trailer',
-          statusCode: 200,
-          duration: Date.now() - startTime,
-          memoryUsed: (process.memoryUsage().heapUsed - startMemory) / 1024 / 1024,
-          dbQueries: 0,
-          requestSize: 0,
-          responseSize,
-        });
-
-        return NextResponse.json(successResponse, {
-          headers: {
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        });
-      } else if (cached.status === 'no_trailer') {
+      if (cached.status === 'no_trailer') {
         const noTrailerResponse = {
           code: 404,
           message: '该影片没有预告片（缓存）',
@@ -511,7 +486,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. 本地文件不存在 + Redis 缓存未命中，请求豆瓣
+    // 3. 本地文件不存在 + 无失败缓存，请求豆瓣
   }
 
   // 3. 缓存未命中或强制刷新，请求豆瓣 API
@@ -558,9 +533,11 @@ export async function GET(request: Request) {
     try {
       const result = await existingRequest;
 
-      const statusCode = result.status === 'success' ? 200 : (result.status === 'no_trailer' ? 404 : 500);
+      // 判断是成功还是失败
+      const isSuccess = 'url' in result;
+      const statusCode = isSuccess ? 200 : (('status' in result && result.status === 'no_trailer') ? 404 : 500);
 
-      if (result.status === 'success' && result.url) {
+      if (isSuccess) {
         const successResponse = {
           code: 200,
           message: '获取成功（等待中的请求）',
@@ -589,7 +566,7 @@ export async function GET(request: Request) {
             'Expires': '0',
           },
         });
-      } else if (result.status === 'no_trailer') {
+      } else if ('status' in result && result.status === 'no_trailer') {
         return NextResponse.json({
           code: 404,
           message: '该影片没有预告片',
@@ -609,7 +586,7 @@ export async function GET(request: Request) {
   }
 
   // 创建新的请求 Promise
-  const requestPromise = (async (): Promise<TrailerCache> => {
+  const requestPromise = (async (): Promise<TrailerResult> => {
     try {
       // 等待全局请求间隔（防止请求过快）
       await waitForRequestInterval();
@@ -624,16 +601,12 @@ export async function GET(request: Request) {
         ? `/api/video-proxy?url=${encodeURIComponent(trailerUrl)}&douban_id=${id}`
         : null;
 
-      const cacheData: TrailerCache = {
+      // 🔥 不缓存 success 状态，直接返回（video-proxy 会缓存视频文件）
+      const successResult: TrailerSuccess = {
         url: proxiedUrl,
-        status: 'success',
         timestamp: Date.now(),
       };
-
-      // 缓存成功结果（5分钟）
-      await setCache(id, cacheData);
-
-      return cacheData;
+      return successResult;
     } catch (error) {
       let cacheData: TrailerCache;
 
@@ -684,7 +657,9 @@ export async function GET(request: Request) {
     pendingRequests.delete(id);
 
     // 根据结果返回响应
-    if (result.status === 'success' && result.url) {
+    const isSuccess = 'url' in result;
+
+    if (isSuccess) {
       const successResponse = {
         code: 200,
         message: '获取成功',
@@ -713,7 +688,7 @@ export async function GET(request: Request) {
           'Expires': '0',
         },
       });
-    } else if (result.status === 'no_trailer') {
+    } else if ('status' in result && result.status === 'no_trailer') {
       const noTrailerResponse = {
         code: 404,
         message: '该影片没有预告片',
