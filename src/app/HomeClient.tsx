@@ -377,18 +377,11 @@ function HomeClient({ initialConfig }: {
     return !(window as any).RUNTIME_CONFIG?.DISABLE_HERO_TRAILER;
   }, []); // Empty deps - only read once on mount
 
-  // 🚀 计算 loading 状态：数据获取中且没有任何数据时显示 loading
-  // 使用 isFetching 而不是 isLoading，确保即使有缓存也会在重新获取时显示 loading
-  // 但只在没有数据时显示，避免有缓存数据时闪烁
-  const hasAnyData = homeData && (
-    homeData.hotMovies.length > 0 ||
-    homeData.hotTvShows.length > 0 ||
-    homeData.hotVarietyShows.length > 0 ||
-    homeData.hotAnime.length > 0 ||
-    homeData.hotShortDramas.length > 0 ||
-    homeData.bangumiCalendar.length > 0
-  );
-  const loading = homeFetching && !hasAnyData;
+  // 🚀 计算 loading 状态：使用 TanStack Query 的 isLoading 状态
+  // isLoading = 任何查询正在首次加载（没有缓存数据）
+  // 这确保用户看到的是完整加载好的页面，而不是部分内容逐渐出现
+  // 参考 TanStack Query 官方文档 useQueries combine 示例
+  const loading = homeLoading;
 
   // 🚀 Web Worker引用
   const workerRef = useRef<Worker | null>(null);
