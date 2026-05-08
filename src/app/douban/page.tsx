@@ -116,7 +116,12 @@ const doubanListOptions = (
   },
   initialPageParam: 0,
   getNextPageParam: (lastPage, allPages) => {
-    return lastPage.list.length === PAGE_SIZE ? allPages.length : undefined;
+    // 如果返回的数据少于 PAGE_SIZE，说明没有更多数据了
+    if (lastPage.list.length < PAGE_SIZE) {
+      return undefined;
+    }
+    // 如果返回的数据等于 PAGE_SIZE，可能还有更多数据
+    return allPages.length;
   },
   enabled: !!type,
   staleTime: 2 * 60 * 1000,
@@ -185,6 +190,13 @@ function DoubanPageClient() {
     () => data?.pages.flatMap((page) => page.list) ?? [],
     [data]
   );
+
+  // 处理滚动到底部加载更多
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // 保存虚拟化设置
   const toggleVirtualization = () => {
@@ -494,11 +506,7 @@ function DoubanPageClient() {
                   className='grid-cols-3 gap-x-2 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:gap-x-8'
                   rowGapClass='pb-12 sm:pb-20'
                   estimateRowHeight={320}
-                  endReached={() => {
-                    if (hasNextPage && !isFetchingNextPage) {
-                      fetchNextPage();
-                    }
-                  }}
+                  endReached={handleEndReached}
                   endReachedThreshold={3}
                   renderItem={(item, index) => {
                     const mappedType = type === 'movie' ? 'movie' : type === 'show' ? 'variety' : type === 'tv' ? 'tv' : type === 'anime' ? 'anime' : '';
