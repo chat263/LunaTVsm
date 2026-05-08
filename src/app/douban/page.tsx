@@ -471,7 +471,7 @@ function DoubanPageClient() {
           <div className='flex items-center justify-end gap-3 px-2'>
             <label className='flex items-center gap-2 cursor-pointer group'>
               <span className='text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors'>
-                虚拟滚动
+                ⚡ 虚拟滑动
               </span>
               <div className='relative'>
                 <input

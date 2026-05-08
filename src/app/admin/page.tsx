@@ -73,6 +73,7 @@ import EmbyConfig from '@/components/EmbyConfig';
 import CustomAdFilterConfig from '@/components/CustomAdFilterConfig';
 import WatchRoomConfig from '@/components/WatchRoomConfig';
 import HomePageConfig from '@/components/HomePageConfig';
+import WordListConfig from '@/components/WordListConfig';
 import PerformanceMonitor from '@/components/admin/PerformanceMonitor';
 import InviteCodeManager from '@/components/InviteCodeManager';
 import PageLayout from '@/components/PageLayout';
@@ -7574,6 +7575,7 @@ function AdminPageClient() {
     liveSource: false,
     siteConfig: false,
     homePageConfig: false,
+    wordListConfig: false,
     categoryConfig: false,
     netdiskConfig: false,
     aiRecommendConfig: false,
@@ -7754,6 +7756,21 @@ function AdminPageClient() {
               onToggle={() => toggleTab('homePageConfig')}
             >
               <HomePageConfig config={config} refreshConfig={fetchConfig} />
+            </CollapsibleTab>
+
+            {/* 分词推荐配置标签 */}
+            <CollapsibleTab
+              title='分词推荐配置'
+              icon={
+                <MessageSquare
+                  size={20}
+                  className='text-gray-600 dark:text-gray-400'
+                />
+              }
+              isExpanded={expandedTabs.wordListConfig}
+              onToggle={() => toggleTab('wordListConfig')}
+            >
+              <WordListConfig refreshConfig={fetchConfig} />
             </CollapsibleTab>
 
             {/* 用户配置标签 */}
