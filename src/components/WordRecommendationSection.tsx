@@ -196,11 +196,6 @@ export default function WordRecommendationSection({
     wordData.hot.length > 0 ||
     wordData.sensitive.length > 0;
 
-  // 已加载但无任何词语时不显示
-  if (!loading && !hasAnyWord) {
-    return null;
-  }
-
   // 正常渲染 - Netflix 风格
   return (
     <div
@@ -358,6 +353,24 @@ export default function WordRecommendationSection({
       {loading && (
         <div className='text-center py-8 text-gray-500 dark:text-gray-400'>
           正在分析标题...
+        </div>
+      )}
+
+      {/* 词库为空提示 */}
+      {!loading && !hasAnyWord && (
+        <div className="text-center py-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+            <span className="text-3xl">📚</span>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            推荐功能需要配置词库
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+            当前标题未匹配到任何关键词
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            请前往 <span className="font-medium text-blue-600 dark:text-blue-400">管理后台 &gt; 分词配置</span> 添加演员名、热门标签等
+          </p>
         </div>
       )}
     </div>
