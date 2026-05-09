@@ -12,7 +12,7 @@ declare global {
 }
 
 // 检查是否为安全上下文（HTTPS）
-const isSecureContext = typeof window !== 'undefined' && (window.isSecureContext || location.protocol === 'https:')
+const isSecureContext = typeof window !== 'undefined' && typeof location !== 'undefined' && (window.isSecureContext || location.protocol === 'https:')
 const isFirefox = typeof document !== 'undefined' && 'MozAppearance' in document.documentElement.style
 
 // 下载策略：iframe 或 navigate
