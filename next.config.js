@@ -59,6 +59,9 @@ const nextConfig = {
     ],
   },
 
+  // 防止某些包在SSR时被打包，避免浏览器API访问错误
+  serverComponentsExternalPackages: ['framer-motion'],
+
   // 图片优化配置
 
   images: {
