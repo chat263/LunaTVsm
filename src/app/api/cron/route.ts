@@ -13,6 +13,7 @@ import { SearchResult, Favorite, PlayRecord } from '@/lib/types';
 import { recordRequest, getDbQueryCount, resetDbQueryCount } from '@/lib/performance-monitor';
 import { cleanupExpiredCache, validateCacheSize } from '@/lib/video-cache';
 import { cronCache } from '@/lib/server-cache';
+import { DEFAULT_CRON_CONFIG } from '@/lib/admin.types';
 
 export const runtime = 'nodejs';
 
@@ -546,13 +547,7 @@ async function refreshRecordAndFavorites() {
   try {
     // 获取配置
     const config = await getConfig();
-    const cronConfig = config.CronConfig || {
-      enableAutoRefresh: true,
-      maxRecordsPerRun: 50,  // 优化：减少每次处理数量，降低吞吐量
-      onlyRefreshRecent: true,
-      recentDays: 21,  // 优化：平衡更新及时性和资源消耗
-      onlyRefreshOngoing: true,
-    };
+    const cronConfig = config.CronConfig || DEFAULT_CRON_CONFIG;
 
     // 检查是否启用自动刷新
     if (!cronConfig.enableAutoRefresh) {
