@@ -548,9 +548,9 @@ async function refreshRecordAndFavorites() {
     const config = await getConfig();
     const cronConfig = config.CronConfig || {
       enableAutoRefresh: true,
-      maxRecordsPerRun: 100,
+      maxRecordsPerRun: 50,  // 优化：减少每次处理数量，降低吞吐量
       onlyRefreshRecent: true,
-      recentDays: 30,
+      recentDays: 21,  // 优化：平衡更新及时性和资源消耗
       onlyRefreshOngoing: true,
     };
 
