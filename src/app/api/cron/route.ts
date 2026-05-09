@@ -12,6 +12,7 @@ import { getSpiderJar } from '@/lib/spiderJar';
 import { SearchResult, Favorite, PlayRecord } from '@/lib/types';
 import { recordRequest, getDbQueryCount, resetDbQueryCount } from '@/lib/performance-monitor';
 import { cleanupExpiredCache, validateCacheSize } from '@/lib/video-cache';
+import { cronCache } from '@/lib/server-cache';
 
 export const runtime = 'nodejs';
 
@@ -259,6 +260,10 @@ export async function GET(request: NextRequest) {
 
 async function cronJob() {
   console.log('🚀 开始执行定时任务...');
+
+  // 🚀 清空缓存，确保每次 cron 任务都是最新数据
+  cronCache.clear();
+  console.log('🧹 已清空进程缓存');
 
   // 🚀 阶段2优化：初始化性能统计
   currentCronStats = {
@@ -550,7 +555,12 @@ async function refreshRecordAndFavorites() {
 
     console.log('📊 Cron 配置:', cronConfig);
 
-    const users = await db.getAllUsers();
+    // 🚀 使用缓存获取用户列表（整个 cron 任务期间只查询一次）
+    const users = await cronCache.wrap(
+      'cron:all_users',
+      () => db.getAllUsers(),
+      300000 // 5分钟缓存
+    );
     console.log('📋 数据库中的用户列表:', users);
 
     if (process.env.USERNAME && !users.includes(process.env.USERNAME)) {
@@ -606,14 +616,23 @@ async function refreshRecordAndFavorites() {
 
     for (const user of users) {
       console.log(`开始处理用户: ${user}`);
-      
-      // 检查用户是否真的存在
-      const userExists = await db.checkUserExist(user);
+
+      // 🚀 使用缓存检查用户是否存在（避免重复查询）
+      const userExists = await cronCache.wrap(
+        `cron:user_exists:${user}`,
+        () => db.checkUserExist(user),
+        300000
+      );
       console.log(`用户 ${user} 是否存在: ${userExists}`);
 
       // 播放记录
       try {
-        const playRecords = await db.getAllPlayRecords(user);
+        // 🚀 使用缓存获取播放记录（避免重复查询）
+        const playRecords = await cronCache.wrap(
+          `cron:play_records:${user}`,
+          () => db.getAllPlayRecords(user),
+          300000
+        );
         let recordsToProcess = Object.entries(playRecords);
         const totalRecords = recordsToProcess.length;
 
@@ -720,7 +739,12 @@ async function refreshRecordAndFavorites() {
 
       // 收藏
       try {
-        let favorites = await db.getAllFavorites(user);
+        // 🚀 使用缓存获取收藏（避免重复查询）
+        let favorites = await cronCache.wrap(
+          `cron:favorites:${user}`,
+          () => db.getAllFavorites(user),
+          300000
+        );
         favorites = Object.fromEntries(
           Object.entries(favorites).filter(([_, fav]) => fav.origin !== 'live')
         );
@@ -873,6 +897,7 @@ async function cleanupInactiveUsers() {
 
     console.log('🧹 开始清理非活跃用户...');
 
+    // 🚀 使用缓存获取用户列表（与 refreshRecordAndFavorites 共享缓存）
     const allUsers = config.UserConfig.Users;
     console.log('✅ 获取用户列表成功，共', allUsers.length, '个用户');
 
@@ -908,10 +933,15 @@ async function cleanupInactiveUsers() {
         console.log(`  🔍 检查用户是否存在于数据库: ${user.username}`);
         let userExists = true;
         try {
-          userExists = await withTimeout(
-            db.checkUserExist(user.username),
-            5000,
-            'checkUserExist超时'
+          // 🚀 使用缓存（与 refreshRecordAndFavorites 共享）
+          userExists = await cronCache.wrap(
+            `cron:user_exists:${user.username}`,
+            () => withTimeout(
+              db.checkUserExist(user.username),
+              5000,
+              'checkUserExist超时'
+            ),
+            300000
           );
           console.log(`  📝 用户存在状态: ${userExists}`);
         } catch (err) {
@@ -928,10 +958,15 @@ async function cleanupInactiveUsers() {
         console.log(`  📊 获取用户统计信息: ${user.username}`);
         let userStats;
         try {
-          userStats = await withTimeout(
-            db.getUserPlayStat(user.username),
-            5000,
-            'getUserPlayStat超时'
+          // 🚀 使用缓存（getUserPlayStat 内部会调用 getAllPlayRecords，已被缓存）
+          userStats = await cronCache.wrap(
+            `cron:user_stats:${user.username}`,
+            () => withTimeout(
+              db.getUserPlayStat(user.username),
+              5000,
+              'getUserPlayStat超时'
+            ),
+            300000
           ) as { lastLoginTime?: number; firstLoginTime?: number; loginCount?: number; [key: string]: any };
           console.log(`  📈 用户统计结果:`, userStats);
         } catch (err) {
@@ -1058,16 +1093,30 @@ function calculateUserLevel(loginCount: number) {
 
 async function optimizeActiveUserLevels() {
   try {
-    const allUsers = await db.getAllUsers();
+    // 🚀 使用缓存获取用户列表（与其他函数共享）
+    const allUsers = await cronCache.wrap(
+      'cron:all_users',
+      () => db.getAllUsers(),
+      300000
+    );
     let optimizedCount = 0;
 
     for (const user of allUsers) {
       try {
-        // 检查用户是否存在
-        const userExists = await db.checkUserExist(user);
+        // 🚀 使用缓存检查用户是否存在
+        const userExists = await cronCache.wrap(
+          `cron:user_exists:${user}`,
+          () => db.checkUserExist(user),
+          300000
+        );
         if (!userExists) continue;
 
-        const userStats = await db.getUserPlayStat(user);
+        // 🚀 使用缓存获取用户统计
+        const userStats = await cronCache.wrap(
+          `cron:user_stats:${user}`,
+          () => db.getUserPlayStat(user),
+          300000
+        );
         if (!userStats || !userStats.loginCount) continue;
 
         // 计算用户等级（所有用户都有等级）
