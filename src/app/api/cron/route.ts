@@ -273,6 +273,19 @@ async function cronJob() {
     dbQueries: 0,
   };
 
+  // 🚀 预先缓存用户列表，避免并行任务的缓存竞争
+  console.log('📋 预先缓存用户列表...');
+  try {
+    const allUsers = await cronCache.wrap(
+      'cron:all_users',
+      () => db.getAllUsers(),
+      300000
+    );
+    console.log(`✅ 用户列表已缓存: ${allUsers.length} 个用户`);
+  } catch (err) {
+    console.error('❌ 预缓存用户列表失败:', err);
+  }
+
   // 🚀 阶段4优化：并行执行互不依赖的任务组
   // 第一组：用户清理、配置刷新、视频缓存任务（并行执行）
   console.log('🔄 开始执行第一组并行任务...');
