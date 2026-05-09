@@ -872,9 +872,14 @@ async function cleanupInactiveUsers() {
     // 删除条件：注册时间 >= X天 且 (从未登入 或 最后登入时间 >= X天)
 
     // 预热 Redis 连接，避免冷启动
+    // 🚀 使用缓存的 getAllUsers 进行预热（与其他函数共享缓存）
     console.log('🔥 预热数据库连接...');
     try {
-      await db.getAllUsers();
+      await cronCache.wrap(
+        'cron:all_users',
+        () => db.getAllUsers(),
+        300000
+      );
       console.log('✅ 数据库连接预热成功');
     } catch (warmupErr) {
       console.warn('⚠️ 数据库连接预热失败:', warmupErr);
