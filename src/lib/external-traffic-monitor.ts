@@ -111,6 +111,24 @@ export async function getExternalTrafficStats(hours: number = 1) {
   filteredData.forEach((item) => {
     try {
       const domain = new URL(item.url).hostname;
+
+      // 过滤掉无意义的域名（0.0.0.0, localhost等）
+      if (
+        !domain ||
+        domain === '0.0.0.0' ||
+        domain === 'localhost' ||
+        domain === '127.0.0.1' ||
+        domain.startsWith('192.168.') ||
+        domain.startsWith('10.') ||
+        domain.startsWith('172.')
+      ) {
+        invalidUrlCount++;
+        if (invalidUrlCount <= 5) {
+          console.warn(`⚠️ 无效的外部请求URL: ${item.url}`);
+        }
+        return;
+      }
+
       if (!byDomain[domain]) {
         byDomain[domain] = { requests: 0, traffic: 0 };
       }
