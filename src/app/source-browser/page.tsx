@@ -146,9 +146,8 @@ export default function SourceBrowserPage() {
   useEffect(() => {
     if (categories.length > 0 && !activeCategory) {
       setActiveCategory(categories[0].type_id);
-    } else if (categories.length === 0) {
-      setActiveCategory('');
     }
+    // intentionally not resetting when categories is empty — that's the loading state
   }, [categories, activeCategory]);
 
   const [items, setItems] = useState<Item[]>([]);
@@ -680,6 +679,7 @@ export default function SourceBrowserPage() {
                     key={s.key}
                     onClick={() => {
                       setActiveSourceKey(s.key);
+                      setActiveCategory('');
                       updateUrlParams({ source: s.key, category: null });
                     }}
                     className={`group relative px-4 py-2.5 rounded-xl text-sm font-medium border-2 transition-all duration-300 transform hover:scale-105 ${
