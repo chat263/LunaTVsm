@@ -134,55 +134,22 @@ export default function SourceBrowserPage() {
 
   const categories: Category[] = categoriesData || [];
 
-  // 当源列表加载完成时，验证并恢复源或选择第一个
+  // 当源列表加载完成时，自动选择第一个源（仅当没有选中任何源时）
   useEffect(() => {
-    if (sources.length > 0) {
-      // 如果 URL 中有源参数，验证它是否存在
-      if (sourceFromUrl) {
-        const sourceExists = sources.some((s) => s.key === sourceFromUrl);
-        if (sourceExists && activeSourceKey !== sourceFromUrl) {
-          setActiveSourceKey(sourceFromUrl);
-        } else if (!sourceExists && !activeSourceKey) {
-          // URL 中的源不存在，选择第一个
-          const firstSource = sources[0].key;
-          setActiveSourceKey(firstSource);
-          updateUrlParams({ source: firstSource });
-        }
-      } else if (!activeSourceKey) {
-        // 没有 URL 参数，选择第一个源
-        const firstSource = sources[0].key;
-        setActiveSourceKey(firstSource);
-        updateUrlParams({ source: firstSource });
-      }
+    if (sources.length > 0 && !activeSourceKey) {
+      const firstSource = sources[0].key;
+      setActiveSourceKey(firstSource);
     }
-  }, [sources, sourceFromUrl, activeSourceKey, updateUrlParams]);
+  }, [sources, activeSourceKey]);
 
-  // 当分类列表加载完成时，验证并恢复分类或选择第一个
+  // 当分类列表加载完成时，自动选择第一个分类（仅当没有选中任何分类时）
   useEffect(() => {
-    if (categories.length > 0) {
-      // 如果 URL 中有分类参数，验证它是否存在于当前分类列表中
-      if (categoryFromUrl) {
-        const categoryExists = categories.some(
-          (c) => String(c.type_id) === categoryFromUrl
-        );
-        if (categoryExists && activeCategory !== categoryFromUrl) {
-          setActiveCategory(categoryFromUrl);
-        } else if (!categoryExists && !activeCategory) {
-          // URL 中的分类不存在，选择第一个
-          const firstCategory = String(categories[0].type_id);
-          setActiveCategory(firstCategory);
-          updateUrlParams({ category: firstCategory });
-        }
-      } else if (!activeCategory) {
-        // 没有 URL 参数，选择第一个分类
-        const firstCategory = String(categories[0].type_id);
-        setActiveCategory(firstCategory);
-        updateUrlParams({ category: firstCategory });
-      }
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0].type_id);
     } else if (categories.length === 0) {
       setActiveCategory('');
     }
-  }, [categories, categoryFromUrl, activeCategory, updateUrlParams]);
+  }, [categories, activeCategory]);
 
   const [items, setItems] = useState<Item[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -339,18 +306,6 @@ export default function SourceBrowserPage() {
       fetchSearch(activeSourceKey, query.trim(), 1, false);
     }
   }, [activeSourceKey, mode, query, fetchSearch]);
-
-  // Sync primary state to URL when changed
-  useEffect(() => {
-    if (activeSourceKey) {
-      updateUrlParams({
-        source: activeSourceKey,
-        category: activeCategory ? String(activeCategory) : null,
-        mode: mode === 'search' ? 'search' : null,
-        q: query.trim() || null,
-      });
-    }
-  }, [activeSourceKey, activeCategory, mode, query, updateUrlParams]);
 
   // Sync secondary state to sessionStorage when changed
   useEffect(() => {
