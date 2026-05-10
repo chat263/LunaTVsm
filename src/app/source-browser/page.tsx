@@ -853,7 +853,7 @@ export default function SourceBrowserPage() {
                           updateUrlParams({ category: String(c.type_id) });
                         }}
                         className={`group relative px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all duration-300 transform hover:scale-105 ${
-                          activeCategory === c.type_id
+                          String(activeCategory) === String(c.type_id)
                             ? 'bg-linear-to-r from-blue-500 to-indigo-500 text-white border-transparent shadow-lg shadow-blue-500/30'
                             : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-linear-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-900/20 dark:hover:to-indigo-900/20 hover:border-blue-300 dark:hover:border-blue-700'
                         }`}
@@ -861,7 +861,7 @@ export default function SourceBrowserPage() {
                           animation: `fadeInUp 0.3s ease-out ${index * 0.03}s both`,
                         }}
                       >
-                        {activeCategory === c.type_id && (
+                        {String(activeCategory) === String(c.type_id) && (
                           <div className='absolute inset-0 rounded-xl bg-linear-to-r from-blue-400 to-indigo-400 blur-lg opacity-50 -z-10'></div>
                         )}
                         {c.type_name}
