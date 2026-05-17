@@ -15,12 +15,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
+
+    // 已移除 baseUrl（已弃用）
     "paths": {
       "@/*": ["./src/*"],
       "~/*": ["./public/*"]
     },
-    "ignoreDeprecations": "5.0",
+
     "incremental": true,
     "plugins": [
       {
