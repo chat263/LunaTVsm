@@ -10,9 +10,15 @@ interface TrustedNetworkConfigProps {
   refreshConfig: () => Promise<void>;
 }
 
-const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigProps) => {
+const TrustedNetworkConfig = ({
+  config,
+  refreshConfig,
+}: TrustedNetworkConfigProps) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [settings, setSettings] = useState({
     enabled: false,
@@ -67,7 +73,8 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
     const [ipPart, maskPart] = trimmed.split('/');
 
     const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$|^::([0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{0,4}$|^([0-9a-fA-F]{1,4}:){1,6}:$|^::$/;
+    const ipv6Regex =
+      /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$|^::([0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{0,4}$|^([0-9a-fA-F]{1,4}:){1,6}:$|^::$/;
 
     const isIPv4 = ipv4Regex.test(ipPart);
     const isIPv6 = ipv6Regex.test(ipPart);
@@ -97,7 +104,10 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
     if (!newIP.trim()) return;
 
     if (!isValidIPOrCIDR(newIP.trim())) {
-      showMessage('error', '请输入有效的IP地址或CIDR格式 (例如: 192.168.0.0/16, 10.0.0.0/8, 2001:db8::/32)');
+      showMessage(
+        'error',
+        '请输入有效的IP地址或CIDR格式 (例如: 192.168.0.0/16, 10.0.0.0/8, 2001:db8::/32)',
+      );
       return;
     }
 
@@ -165,6 +175,64 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
     }
   };
 
+  // 切换"禁止访客访问后台"开关
+  const toggleBlockAdmin = (blockAdminAccess: boolean) => {
+    saveMutation.mutate(
+      {
+        ...settings,
+        blockAdminAccess,
+      },
+      {
+        onSuccess: () => {
+          showMessage(
+            'success',
+            `信任网络访客访问后台已${blockAdminAccess ? '禁止' : '允许'}！`,
+          );
+        },
+        onError: (error) => {
+          showMessage('error', error.message);
+        },
+      },
+    );
+  };
+
+  // 加载状态
+  if (isQueryLoading) {
+    return (
+      <div className='bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6'>
+        <div className='flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6'>
+          <Shield className='h-5 w-5 sm:h-6 sm:w-6 text-green-600' />
+          <h2 className='text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100'>
+            信任网络配置
+          </h2>
+        </div>
+        <div className='text-center py-8 text-gray-500 dark:text-gray-400'>
+          加载中...
+        </div>
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (queryError) {
+    return (
+      <div className='bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6'>
+        <div className='flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6'>
+          <Shield className='h-5 w-5 sm:h-6 sm:w-6 text-green-600' />
+          <h2 className='text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100'>
+            信任网络配置
+          </h2>
+        </div>
+        <div className='bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4'>
+          <div className='flex items-center gap-2 text-red-700 dark:text-red-400'>
+            <AlertCircle className='h-5 w-5' />
+            <span>加载失败：{queryError.message}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6'>
       <div className='flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6'>
@@ -199,7 +267,8 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
               环境变量配置已检测
             </h4>
             <p className='text-xs text-blue-800 dark:text-blue-300 mb-2'>
-              当前通过环境变量 <code>TRUSTED_NETWORK_IPS</code> 配置了信任网络，优先级高于数据库配置。
+              当前通过环境变量 <code>TRUSTED_NETWORK_IPS</code>{' '}
+              配置了信任网络，优先级高于数据库配置。
             </p>
             <div className='space-y-1'>
               {envConfig.trustedIPs.map((ip, index) => (
@@ -327,7 +396,8 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
               )}
 
               <p className='text-xs text-gray-500 dark:text-gray-400'>
-                支持 IPv4 (192.168.1.100)、IPv6 (2001:db8::1) 和 CIDR 格式 (192.168.0.0/16, 10.0.0.0/8)
+                支持 IPv4 (192.168.1.100)、IPv6 (2001:db8::1) 和 CIDR 格式
+                (192.168.0.0/16, 10.0.0.0/8)
               </p>
 
               {/* 使用说明 */}
@@ -337,7 +407,8 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
                 </h4>
                 <ul className='text-xs text-gray-600 dark:text-gray-400 space-y-1'>
                   <li>
-                    &bull; <strong>数据库配置：</strong>在上方添加信任IP段后保存，立即生效
+                    &bull; <strong>数据库配置：</strong>
+                    在上方添加信任IP段后保存，立即生效
                   </li>
                   <li>
                     &bull; <strong>环境变量配置：</strong>设置{' '}
@@ -346,16 +417,46 @@ const TrustedNetworkConfig = ({ config, refreshConfig }: TrustedNetworkConfigPro
                     </code>{' '}
                     （优先级更高）
                   </li>
-                  <li>
-                    &bull; 信任IP段内的设备访问时将自动获得站长权限
-                  </li>
-                  <li>
-                    &bull; 非信任IP段的设备仍需正常登录
-                  </li>
+                  <li>&bull; 信任IP段内的设备访问时将自动获得站长权限</li>
+                  <li>&bull; 非信任IP段的设备仍需正常登录</li>
                 </ul>
               </div>
             </div>
           )}
+        </div>
+
+        {/* 禁止访客访问后台开关 */}
+        <div
+          className={`border border-gray-200 dark:border-gray-700 rounded-lg p-4 ${
+            !settings.enabled ? 'opacity-50' : ''
+          }`}
+        >
+          <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
+            <div className='flex-1 min-w-0'>
+              <h3 className='text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100'>
+                禁止访客访问管理后台
+              </h3>
+              <p className='text-xs sm:text-sm text-gray-600 dark:text-gray-400'>
+                {settings.enabled
+                  ? '开启后，信任网络自动登录的访客无法进入后台 /admin。真站长用密码登录后不受影响。'
+                  : '请先启用信任网络模式'}
+              </p>
+            </div>
+            <label
+              className={`relative inline-flex items-center flex-shrink-0 ${
+                settings.enabled ? 'cursor-pointer' : 'cursor-not-allowed'
+              }`}
+            >
+              <input
+                type='checkbox'
+                checked={settings.blockAdminAccess === true}
+                onChange={(e) => toggleBlockAdmin(e.target.checked)}
+                disabled={!settings.enabled || saveMutation.isPending}
+                className='sr-only peer'
+              />
+              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+            </label>
+          </div>
         </div>
       </div>
 
