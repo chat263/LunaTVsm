@@ -11,6 +11,8 @@ import './globals.css';
 import { getConfig } from '@/lib/config';
 
 import { GlobalErrorIndicator } from '../components/GlobalErrorIndicator';
+import { ChunkErrorGuard } from '../components/ChunkErrorGuard';
+import NavigationShell from '../components/NavigationShell';
 import { SessionTracker } from '../components/SessionTracker';
 import { SiteProvider } from '../components/SiteProvider';
 import { ThemeProvider } from '../components/ThemeProvider';
@@ -21,8 +23,9 @@ import { DownloadPanel } from '../components/download/DownloadPanel';
 import ChatFloatingWindow from '../components/watch-room/ChatFloatingWindow';
 import QueryProvider from '../components/QueryProvider';
 import { CinematicLoadingFallback } from '../components/CinematicLoadingFallback';
+import RouteWarmup from '../components/RouteWarmup';
 
-const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
+const inter = Inter({ subsets: ['latin'] });
 export const dynamic = 'force-dynamic';
 
 // 动态生成 metadata，支持配置更新后的标题变化
@@ -91,7 +94,7 @@ export default async function RootLayout({
     doubanImageProxy = config.SiteConfig.DoubanImageProxy;
     disableYellowFilter = config.SiteConfig.DisableYellowFilter;
     customCategories = config.CustomCategories.filter(
-      (category) => !category.disabled
+      (category) => !category.disabled,
     ).map((category) => ({
       name: category.name || '',
       type: category.type,
@@ -105,7 +108,7 @@ export default async function RootLayout({
     embyEnabled = !!(
       config.EmbyConfig?.Sources &&
       config.EmbyConfig.Sources.length > 0 &&
-      config.EmbyConfig.Sources.some(s => s.enabled && s.ServerURL)
+      config.EmbyConfig.Sources.some((s) => s.enabled && s.ServerURL)
     );
   }
 
@@ -125,7 +128,8 @@ export default async function RootLayout({
     EMBY_ENABLED: embyEnabled,
     PRIVATE_LIBRARY_ENABLED: embyEnabled,
     // 禁用预告片：Vercel 自动检测，或用户手动设置 DISABLE_HERO_TRAILER=true
-    DISABLE_HERO_TRAILER: process.env.VERCEL === '1' || process.env.DISABLE_HERO_TRAILER === 'true',
+    DISABLE_HERO_TRAILER:
+      process.env.VERCEL === '1' || process.env.DISABLE_HERO_TRAILER === 'true',
   };
 
   return (
@@ -160,11 +164,26 @@ export default async function RootLayout({
               <DownloadProvider>
                 <WatchRoomProvider>
                   <SiteProvider siteName={siteName} announcement={announcement}>
-                    <Suspense fallback={<CinematicLoadingFallback />}>
-                      <SessionTracker />
-                      {children}
-                      <GlobalErrorIndicator />
-                    </Suspense>
+                    <ChunkErrorGuard />
+                    <SessionTracker />
+                    <RouteWarmup />
+                    {/* 导航栏在 layout 层，自动持久化 */}
+                    <NavigationShell />
+                    {/* 主内容区域 - 只有这部分会在路由切换时重新渲染 */}
+                    <main className='w-full min-h-screen pt-[44px] md:pt-16 pb-16 md:pb-8'>
+                      <div className='w-full max-w-[2560px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 2xl:px-20'>
+                        <Suspense
+                          fallback={
+                            <div className='fixed inset-0 z-50'>
+                              <CinematicLoadingFallback />
+                            </div>
+                          }
+                        >
+                          {children}
+                        </Suspense>
+                      </div>
+                    </main>
+                    <GlobalErrorIndicator />
                   </SiteProvider>
                   <Suspense fallback={null}>
                     <DownloadPanel />
@@ -174,7 +193,7 @@ export default async function RootLayout({
               </DownloadProvider>
             </GlobalCacheProvider>
           </QueryProvider>
-          <Toaster position="top-center" richColors closeButton />
+          <Toaster position='top-center' richColors closeButton />
         </ThemeProvider>
       </body>
     </html>
