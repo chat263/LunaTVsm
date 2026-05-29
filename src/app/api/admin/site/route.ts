@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
       DoubanProxy,
       DoubanImageProxyType,
       DoubanImageProxy,
+      BangumiApiType,
+      BangumiApiProxy,
       DisableYellowFilter,
       ShowAdultContent,
       FluidSearch,
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
       DoubanProxy: string;
       DoubanImageProxyType: string;
       DoubanImageProxy: string;
+      BangumiApiType?: string;
+      BangumiApiProxy?: string;
       DisableYellowFilter: boolean;
       ShowAdultContent: boolean;
       FluidSearch: boolean;
@@ -117,6 +121,8 @@ export async function POST(request: NextRequest) {
       DoubanProxy,
       DoubanImageProxyType,
       DoubanImageProxy,
+      BangumiApiType: BangumiApiType || 'server',
+      BangumiApiProxy: BangumiApiProxy || '',
       DisableYellowFilter,
       ShowAdultContent,
       FluidSearch,

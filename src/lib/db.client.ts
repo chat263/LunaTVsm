@@ -1910,12 +1910,32 @@ export async function preloadUserData(): Promise<void> {
 // ---------------- 跳过片头片尾配置相关 API ----------------
 
 /**
+ * 生成视频的跨源身份 key，用于 identityKey 模式。
+ * 优先用 doubanId，其次用 title+year 组合。
+ */
+export function getVideoSkipConfigKey(params: {
+  title: string;
+  doubanId?: number;
+  year?: string;
+}): string | undefined {
+  const { title, doubanId, year } = params;
+  if (doubanId && doubanId > 0) {
+    return `douban:${doubanId}`;
+  }
+  if (title && year) {
+    return `title:${title}:${year}`;
+  }
+  return undefined;
+}
+
+/**
  * 获取跳过片头片尾配置。
  * 数据库存储模式下使用混合缓存策略：优先返回缓存数据，后台异步同步最新数据。
  */
 export async function getSkipConfig(
   source: string,
-  id: string
+  id: string,
+  identityKey?: string
 ): Promise<EpisodeSkipConfig | null> {
   try {
     // 服务器端渲染阶段直接返回空
@@ -1954,6 +1974,7 @@ export async function getSkipConfig(
           action: 'get',
           key,
           username: authInfo.username,
+          identityKey,
         }),
       });
 
@@ -1986,7 +2007,8 @@ export async function getSkipConfig(
 export async function saveSkipConfig(
   source: string,
   id: string,
-  config: EpisodeSkipConfig
+  config: EpisodeSkipConfig,
+  identityKey?: string
 ): Promise<void> {
   try {
     const key = generateStorageKey(source, id);
@@ -2034,6 +2056,7 @@ export async function saveSkipConfig(
           key,
           config,
           username: authInfo.username,
+          identityKey,
         }),
       });
 
@@ -2115,7 +2138,8 @@ export async function getAllSkipConfigs(): Promise<Record<string, EpisodeSkipCon
  */
 export async function deleteSkipConfig(
   source: string,
-  id: string
+  id: string,
+  identityKey?: string
 ): Promise<void> {
   try {
     const key = generateStorageKey(source, id);
@@ -2164,6 +2188,7 @@ export async function deleteSkipConfig(
           action: 'delete',
           key,
           username: authInfo.username,
+          identityKey,
         }),
       });
 
