@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isTMDBEnabled } from '@/lib/tmdb.client';
 import { getConfig } from '@/lib/config';
 import { getCacheKey, getCache, setCache, TMDB_CACHE_EXPIRE } from '@/lib/tmdb-cache';
 import { DEFAULT_USER_AGENT } from '@/lib/user-agent';
@@ -31,13 +30,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 });
   }
 
-  if (!(await isTMDBEnabled())) {
+  const config = await getConfig();
+  if (!config.SiteConfig.TMDBApiKey) {
     return NextResponse.json({ backdrop: null });
   }
 
   const cacheKey = getCacheKey('backdrop', { title, year: year || '' });
   const cached = await getCache(cacheKey);
-  if (cached !== undefined) {
+  if (cached) {
     return NextResponse.json({ backdrop: cached });
   }
 
