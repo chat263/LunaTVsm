@@ -6125,7 +6125,6 @@ function PlayPageClient() {
 
   return (
     <>
-      <PageLayout activePath='/play'>
       {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
       {backdropBgUrl && (
         <div
@@ -6133,7 +6132,7 @@ function PlayPageClient() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 0,
+            zIndex: -1,
             overflow: 'hidden',
             pointerEvents: 'none',
           }}
@@ -6158,7 +6157,8 @@ function PlayPageClient() {
           }} />
         </div>
       )}
-      <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom' style={{ zIndex: 1 }}>
+      <PageLayout activePath='/play'>
+      <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
         {/* 第一行：影片标题 */}
         <div className='py-1'>
           <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>

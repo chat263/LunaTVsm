@@ -15,7 +15,7 @@
  * - External API 缓存策略
  */
 
-import { useQuery, queryOptions } from '@tanstack/react-query';
+import { useQuery, queryOptions, keepPreviousData } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { getDoubanDetails, getDoubanComments } from '@/lib/douban.client';
 import { searchTMDBBackdrop } from '@/lib/tmdb-backdrop.client';
@@ -209,5 +209,6 @@ export function useTMDBBackdropQuery(
   return useQuery({
     ...tmdbBackdropOptions(title, year),
     enabled: enabled !== undefined ? enabled : !!title,
+    placeholderData: keepPreviousData,
   });
 }
