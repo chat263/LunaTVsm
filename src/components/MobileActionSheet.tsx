@@ -376,34 +376,53 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
         {doubanDetails && (
           <div
             ref={scrollRef}
-            className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800 max-h-64 overflow-y-auto"
+            className="border-t border-gray-100 dark:border-gray-800 overflow-y-auto"
+            style={{ maxHeight: '280px', touchAction: 'pan-y' }}
+            onTouchMove={(e) => e.stopPropagation()}
             onScroll={() => setShowScrollHint(false)}
           >
-            <div className="pt-3 space-y-2">
-              {/* 评分 */}
-              {doubanDetails.rate && doubanDetails.rate !== '0.0' && parseFloat(doubanDetails.rate) > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-yellow-500 text-sm font-bold">★ {doubanDetails.rate}</span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">豆瓣评分</span>
-                </div>
-              )}
+            <div className="px-4 pt-4 pb-5 space-y-3">
+              {/* 标题 */}
+              <p className="text-base font-semibold text-gray-900 dark:text-white">豆瓣简介</p>
+
+              {/* 评分 + 年份 + 类型 badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                {doubanDetails.rate && parseFloat(doubanDetails.rate) > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-400/10 text-yellow-500 text-sm font-semibold">
+                    ★ {doubanDetails.rate}
+                  </span>
+                )}
+                {doubanDetails.year && (
+                  <span className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400">
+                    {doubanDetails.year}
+                  </span>
+                )}
+                {doubanDetails.genres?.slice(0, 4).map((g: string, i: number) => (
+                  <span key={i} className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300">
+                    {g}
+                  </span>
+                ))}
+              </div>
+
               {/* 导演 */}
               {doubanDetails.directors?.length > 0 && (
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">导演 </span>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-800 dark:text-gray-200">导演　</span>
                   {doubanDetails.directors.slice(0, 3).join(' / ')}
                 </div>
               )}
+
               {/* 主演 */}
               {doubanDetails.cast?.length > 0 && (
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">主演 </span>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-800 dark:text-gray-200">主演　</span>
                   {doubanDetails.cast.slice(0, 4).join(' / ')}
                 </div>
               )}
+
               {/* 简介 */}
               {doubanDetails.plot_summary && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
                   {doubanDetails.plot_summary}
                 </p>
               )}
@@ -413,11 +432,8 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
 
         {/* 向下滚动提示箭头 */}
         {showScrollHint && doubanDetails && (
-          <div className="flex justify-center pb-2 pointer-events-none">
-            <ChevronDown
-              size={20}
-              className="text-gray-300 dark:text-gray-600 animate-bounce"
-            />
+          <div className="flex justify-center py-1 pointer-events-none">
+            <ChevronDown size={18} className="text-gray-300 dark:text-gray-600 animate-bounce" />
           </div>
         )}
       </div>
