@@ -642,24 +642,3 @@ export async function searchTMDBActorWorks(
     } as TMDBResult;
   }
 }
-
-/**
- * 通过标题搜索获取高清 backdrop 图片 URL（w1280）
- * 纯 client-side fetch，调用 /api/tmdb/backdrop route 避免 server-only 依赖进入 client bundle
- */
-export async function searchTMDBBackdrop(
-  title: string,
-  year?: string
-): Promise<string | null> {
-  try {
-    const params = new URLSearchParams({ title: title.trim() });
-    if (year) params.set('year', year);
-    const res = await fetch(`/api/tmdb/backdrop?${params.toString()}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.backdrop ?? null;
-  } catch (error) {
-    console.error(`[TMDB backdrop] 搜索失败 (${title}):`, error);
-    return null;
-  }
-}

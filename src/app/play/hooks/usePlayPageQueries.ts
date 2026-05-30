@@ -18,7 +18,7 @@
 import { useQuery, queryOptions } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { getDoubanDetails, getDoubanComments } from '@/lib/douban.client';
-import { searchTMDBBackdrop } from '@/lib/tmdb.client';
+import { searchTMDBBackdrop } from '@/lib/tmdb-backdrop.client';
 
 // ============================================================================
 // 类型定义
