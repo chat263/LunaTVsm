@@ -645,44 +645,19 @@ export async function searchTMDBActorWorks(
 
 /**
  * 通过标题搜索获取高清 backdrop 图片 URL（w1280）
- * 优先搜索电影，找不到再搜电视剧
+ * 纯 client-side fetch，调用 /api/tmdb/backdrop route 避免 server-only 依赖进入 client bundle
  */
 export async function searchTMDBBackdrop(
   title: string,
   year?: string
 ): Promise<string | null> {
   try {
-    if (!(await isTMDBEnabled())) return null;
-
-    const cacheKey = getCacheKey('backdrop', { title: title.trim(), year: year || '' });
-    const cached = await getCache(cacheKey);
-    if (cached !== undefined) return cached;
-
-    const params: Record<string, string> = { query: title.trim() };
-    if (year) params.year = year;
-
-    // 先搜电影
-    const movieRes = await fetchTMDB<any>('/search/movie', params);
-    const movieHit = movieRes.results?.find((r: any) => r.backdrop_path);
-    if (movieHit?.backdrop_path) {
-      const url = `${TMDB_BACKDROP_BASE_URL}${movieHit.backdrop_path}`;
-      await setCache(cacheKey, url, TMDB_CACHE_EXPIRE.movie_details);
-      return url;
-    }
-
-    // 再搜电视剧
-    const tvParams: Record<string, string> = { query: title.trim() };
-    if (year) tvParams.first_air_date_year = year;
-    const tvRes = await fetchTMDB<any>('/search/tv', tvParams);
-    const tvHit = tvRes.results?.find((r: any) => r.backdrop_path);
-    if (tvHit?.backdrop_path) {
-      const url = `${TMDB_BACKDROP_BASE_URL}${tvHit.backdrop_path}`;
-      await setCache(cacheKey, url, TMDB_CACHE_EXPIRE.movie_details);
-      return url;
-    }
-
-    await setCache(cacheKey, null, TMDB_CACHE_EXPIRE.actor_search);
-    return null;
+    const params = new URLSearchParams({ title: title.trim() });
+    if (year) params.set('year', year);
+    const res = await fetch(`/api/tmdb/backdrop?${params.toString()}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.backdrop ?? null;
   } catch (error) {
     console.error(`[TMDB backdrop] 搜索失败 (${title}):`, error);
     return null;
