@@ -69,6 +69,7 @@ import {
 import {
   useDoubanDetailsQuery,
   useDoubanCommentsQuery,
+  useTMDBBackdropQuery,
 } from './hooks/usePlayPageQueries';
 import {
   usePrefetchNextEpisode,
@@ -489,6 +490,13 @@ function PlayPageClient() {
     status: commentsStatus,
     error: commentsError,
   } = useDoubanCommentsQuery(videoDoubanId);
+
+  // TMDB backdrop 查询（依赖 videoTitle，TMDB 未配置时自动跳过）
+  const { data: tmdbBackdropUrl } = useTMDBBackdropQuery(
+    videoTitle || undefined,
+    videoYear || undefined,
+    !!videoTitle
+  );
 
   // 兼容旧代码的 loading 状态
   const loadingMovieDetails = movieDetailsStatus === 'pending';
@@ -6104,7 +6112,44 @@ function PlayPageClient() {
   return (
     <>
       <PageLayout activePath='/play'>
-      <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
+      {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
+      {(() => {
+        const bgUrl = tmdbBackdropUrl || movieDetails?.backdrop || (videoCover ? processImageUrl(videoCover) : null);
+        if (!bgUrl) return null;
+        return (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 0,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}
+          >
+            <img
+              src={bgUrl}
+              alt=""
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'blur(28px)',
+                transform: 'scale(1.12)',
+                willChange: 'transform',
+                opacity: 0.45,
+              }}
+            />
+            {/* 暗化渐变遮罩，保证文字可读性 */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.88) 100%)',
+            }} />
+          </div>
+        );
+      })()}
+      <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom' style={{ zIndex: 1 }}>
         {/* 第一行：影片标题 */}
         <div className='py-1'>
           <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>

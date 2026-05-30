@@ -7,6 +7,7 @@ import { DEFAULT_USER_AGENT } from '@/lib/user-agent';
 // TMDB API 配置
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const TMDB_BACKDROP_BASE_URL = 'https://image.tmdb.org/t/p/w1280';
 
 // TMDB API 响应类型
 interface TMDBPerson {
@@ -639,5 +640,51 @@ export async function searchTMDBActorWorks(
       list: [],
       source: 'tmdb'
     } as TMDBResult;
+  }
+}
+
+/**
+ * 通过标题搜索获取高清 backdrop 图片 URL（w1280）
+ * 优先搜索电影，找不到再搜电视剧
+ */
+export async function searchTMDBBackdrop(
+  title: string,
+  year?: string
+): Promise<string | null> {
+  try {
+    if (!(await isTMDBEnabled())) return null;
+
+    const cacheKey = getCacheKey('backdrop', { title: title.trim(), year: year || '' });
+    const cached = await getCache(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const params: Record<string, string> = { query: title.trim() };
+    if (year) params.year = year;
+
+    // 先搜电影
+    const movieRes = await fetchTMDB<any>('/search/movie', params);
+    const movieHit = movieRes.results?.find((r: any) => r.backdrop_path);
+    if (movieHit?.backdrop_path) {
+      const url = `${TMDB_BACKDROP_BASE_URL}${movieHit.backdrop_path}`;
+      await setCache(cacheKey, url, TMDB_CACHE_EXPIRE.movie_details);
+      return url;
+    }
+
+    // 再搜电视剧
+    const tvParams: Record<string, string> = { query: title.trim() };
+    if (year) tvParams.first_air_date_year = year;
+    const tvRes = await fetchTMDB<any>('/search/tv', tvParams);
+    const tvHit = tvRes.results?.find((r: any) => r.backdrop_path);
+    if (tvHit?.backdrop_path) {
+      const url = `${TMDB_BACKDROP_BASE_URL}${tvHit.backdrop_path}`;
+      await setCache(cacheKey, url, TMDB_CACHE_EXPIRE.movie_details);
+      return url;
+    }
+
+    await setCache(cacheKey, null, TMDB_CACHE_EXPIRE.actor_search);
+    return null;
+  } catch (error) {
+    console.error(`[TMDB backdrop] 搜索失败 (${title}):`, error);
+    return null;
   }
 }
