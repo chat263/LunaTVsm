@@ -6145,14 +6145,14 @@ function PlayPageClient() {
             alt=""
             fill
             className="object-cover object-center"
-            style={{ opacity: 0.45 }}
+            style={{ opacity: 0.18 }}
             unoptimized
             priority
           />
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.88) 100%)',
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.45) 60%, rgba(0,0,0,0.7) 100%)',
           }} />
         </div>,
         document.body
