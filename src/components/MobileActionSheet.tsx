@@ -1,6 +1,6 @@
-import { Radio, X } from 'lucide-react';
+import { Radio, X, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ActionItem {
@@ -18,12 +18,13 @@ interface MobileActionSheetProps {
   title: string;
   actions: ActionItem[];
   poster?: string;
-  sources?: string[]; // 播放源信息
-  isAggregate?: boolean; // 是否为聚合内容
-  sourceName?: string; // 播放源名称
-  currentEpisode?: number; // 当前集数
-  totalEpisodes?: number; // 总集数
+  sources?: string[];
+  isAggregate?: boolean;
+  sourceName?: string;
+  currentEpisode?: number;
+  totalEpisodes?: number;
   origin?: 'vod' | 'live';
+  doubanId?: number;
 }
 
 const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
@@ -38,11 +39,14 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   currentEpisode,
   totalEpisodes,
   origin = 'vod',
+  doubanId,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  // Portal 容器（独立容器，避免多实例冲突和 z-index 问题）
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  const [doubanDetails, setDoubanDetails] = useState<any>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 创建独立的 Portal 容器
   useEffect(() => {
@@ -96,6 +100,26 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
       }
     };
   }, [isOpen]);
+
+  // 打开时异步加载豆瓣详情
+  useEffect(() => {
+    if (!isOpen || !doubanId || doubanId === 0) {
+      setDoubanDetails(null);
+      setShowScrollHint(false);
+      return;
+    }
+    setDoubanDetails(null);
+    setShowScrollHint(false);
+    fetch(`/api/douban/details?id=${doubanId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(res => {
+        if (res?.code === 200 && res?.data) {
+          setDoubanDetails(res.data);
+          setShowScrollHint(true);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, doubanId]);
 
   // 阻止背景滚动
   useEffect(() => {
@@ -345,6 +369,71 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 豆瓣详情区域 */}
+        {doubanDetails && (
+          <div
+            ref={scrollRef}
+            className="border-t border-gray-100 dark:border-gray-800 overflow-y-auto"
+            style={{ maxHeight: '280px', touchAction: 'pan-y' }}
+            onTouchMove={(e) => e.stopPropagation()}
+            onScroll={() => setShowScrollHint(false)}
+          >
+            <div className="px-4 pt-4 pb-5 space-y-3">
+              {/* 标题 */}
+              <p className="text-base font-semibold text-gray-900 dark:text-white">豆瓣简介</p>
+
+              {/* 评分 + 年份 + 类型 badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                {doubanDetails.rate && parseFloat(doubanDetails.rate) > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-400/10 text-yellow-500 text-sm font-semibold">
+                    ★ {doubanDetails.rate}
+                  </span>
+                )}
+                {doubanDetails.year && (
+                  <span className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400">
+                    {doubanDetails.year}
+                  </span>
+                )}
+                {doubanDetails.genres?.slice(0, 4).map((g: string, i: number) => (
+                  <span key={i} className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300">
+                    {g}
+                  </span>
+                ))}
+              </div>
+
+              {/* 导演 */}
+              {doubanDetails.directors?.length > 0 && (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-800 dark:text-gray-200">导演　</span>
+                  {doubanDetails.directors.slice(0, 3).join(' / ')}
+                </div>
+              )}
+
+              {/* 主演 */}
+              {doubanDetails.cast?.length > 0 && (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-800 dark:text-gray-200">主演　</span>
+                  {doubanDetails.cast.slice(0, 4).join(' / ')}
+                </div>
+              )}
+
+              {/* 简介 */}
+              {doubanDetails.plot_summary && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {doubanDetails.plot_summary}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 向下滚动提示箭头 */}
+        {showScrollHint && doubanDetails && (
+          <div className="flex justify-center py-1 pointer-events-none">
+            <ChevronDown size={18} className="text-gray-300 dark:text-gray-600 animate-bounce" />
           </div>
         )}
       </div>

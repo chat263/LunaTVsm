@@ -4,7 +4,7 @@
 
 'use client';
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Hls from 'hls.js';
 import { Heart, ChevronUp, Download, X } from 'lucide-react';
@@ -69,6 +69,7 @@ import {
 import {
   useDoubanDetailsQuery,
   useDoubanCommentsQuery,
+  useTMDBBackdropQuery,
 } from './hooks/usePlayPageQueries';
 import {
   usePrefetchNextEpisode,
@@ -490,9 +491,30 @@ function PlayPageClient() {
     error: commentsError,
   } = useDoubanCommentsQuery(videoDoubanId);
 
+  // TMDB backdrop 查询（依赖 videoTitle，TMDB 未配置时自动跳过）
+  const { data: tmdbBackdropUrl } = useTMDBBackdropQuery(
+    videoTitle || undefined,
+    videoYear || undefined,
+    !!videoTitle
+  );
+
   // 兼容旧代码的 loading 状态
   const loadingMovieDetails = movieDetailsStatus === 'pending';
   const loadingComments = commentsStatus === 'pending';
+
+  // 沉浸式背景图 URL（响应式，任一数据源加载完后自动更新）
+  const backdropBgUrl = useMemo(() => {
+    const proxyDouban = (url: string) =>
+      (url.includes('douban') || url.includes('doubanio'))
+        ? `/api/image-proxy?url=${encodeURIComponent(url)}`
+        : url;
+    const result = tmdbBackdropUrl
+      || (movieDetails?.backdrop ? proxyDouban(movieDetails.backdrop) : null)
+      || (videoCover ? processImageUrl(videoCover) : null)
+      || null;
+    console.log('[backdrop]', { tmdbBackdropUrl, backdrop: movieDetails?.backdrop, videoCover, result });
+    return result;
+  }, [tmdbBackdropUrl, movieDetails?.backdrop, videoCover]);
 
   // 当前源和ID
   const [currentSource, setCurrentSource] = useState(
@@ -6103,8 +6125,40 @@ function PlayPageClient() {
 
   return (
     <>
+      {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
+      {backdropBgUrl && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={backdropBgUrl}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'blur(28px)',
+              transform: 'scale(1.12)',
+              willChange: 'transform',
+              opacity: 0.45,
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.88) 100%)',
+          }} />
+        </div>
+      )}
       <PageLayout activePath='/play'>
-      <div className='flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
+      <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
         {/* 第一行：影片标题 */}
         <div className='py-1'>
           <h1 className='text-xl font-semibold text-gray-900 dark:text-gray-100'>
