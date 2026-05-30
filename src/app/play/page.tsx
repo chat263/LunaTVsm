@@ -6126,14 +6126,14 @@ function PlayPageClient() {
 
   return (
     <>
-      {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
-      {backdropBgUrl && (
+      {/* 沉浸式背景层：用 Portal 渲染到 body，避免被 main 的背景色遮住 */}
+      {backdropBgUrl && typeof document !== 'undefined' && createPortal(
         <div
           aria-hidden="true"
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 1,
+            zIndex: 0,
             overflow: 'hidden',
             pointerEvents: 'none',
             filter: 'blur(28px)',
@@ -6154,7 +6154,8 @@ function PlayPageClient() {
             inset: 0,
             background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.88) 100%)',
           }} />
-        </div>
+        </div>,
+        document.body
       )}
       <PageLayout activePath='/play'>
       <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>
