@@ -6114,7 +6114,13 @@ function PlayPageClient() {
       <PageLayout activePath='/play'>
       {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
       {(() => {
-        const bgUrl = tmdbBackdropUrl || movieDetails?.backdrop || (videoCover ? processImageUrl(videoCover) : null);
+        const proxyDouban = (url: string) =>
+          (url.includes('douban') || url.includes('doubanio'))
+            ? `/api/image-proxy?url=${encodeURIComponent(url)}`
+            : url;
+        const bgUrl = tmdbBackdropUrl
+          || (movieDetails?.backdrop ? proxyDouban(movieDetails.backdrop) : null)
+          || (videoCover ? processImageUrl(videoCover) : null);
         if (!bgUrl) return null;
         return (
           <div
