@@ -508,10 +508,12 @@ function PlayPageClient() {
       (url.includes('douban') || url.includes('doubanio'))
         ? `/api/image-proxy?url=${encodeURIComponent(url)}`
         : url;
-    return tmdbBackdropUrl
+    const result = tmdbBackdropUrl
       || (movieDetails?.backdrop ? proxyDouban(movieDetails.backdrop) : null)
       || (videoCover ? processImageUrl(videoCover) : null)
       || null;
+    console.log('[backdrop]', { tmdbBackdropUrl, backdrop: movieDetails?.backdrop, videoCover, result });
+    return result;
   }, [tmdbBackdropUrl, movieDetails?.backdrop, videoCover]);
 
   // 当前源和ID
