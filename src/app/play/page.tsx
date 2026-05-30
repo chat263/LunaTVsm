@@ -4,6 +4,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Hls from 'hls.js';
@@ -6135,20 +6136,18 @@ function PlayPageClient() {
             zIndex: 1,
             overflow: 'hidden',
             pointerEvents: 'none',
+            filter: 'blur(28px)',
+            transform: 'scale(1.12)',
           }}
         >
-          <img
+          <Image
             src={backdropBgUrl}
             alt=""
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              filter: 'blur(28px)',
-              transform: 'scale(1.12)',
-              willChange: 'transform',
-              opacity: 0.45,
-            }}
+            fill
+            className="object-cover object-center"
+            style={{ opacity: 0.45 }}
+            unoptimized
+            priority
           />
           <div style={{
             position: 'absolute',
