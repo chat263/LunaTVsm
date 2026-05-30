@@ -4,6 +4,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Hls from 'hls.js';
@@ -6125,37 +6126,36 @@ function PlayPageClient() {
 
   return (
     <>
-      {/* 沉浸式背景层：优先 TMDB backdrop → 豆瓣 backdrop → 海报封面 */}
-      {backdropBgUrl && (
+      {/* 沉浸式背景层：用 Portal 渲染到 body，避免被 main 的背景色遮住 */}
+      {backdropBgUrl && typeof document !== 'undefined' && createPortal(
         <div
           aria-hidden="true"
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 1,
+            zIndex: 0,
             overflow: 'hidden',
             pointerEvents: 'none',
+            filter: 'blur(28px)',
+            transform: 'scale(1.12)',
           }}
         >
-          <img
+          <Image
             src={backdropBgUrl}
             alt=""
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              filter: 'blur(28px)',
-              transform: 'scale(1.12)',
-              willChange: 'transform',
-              opacity: 0.45,
-            }}
+            fill
+            className="object-cover object-center"
+            style={{ opacity: 0.18 }}
+            unoptimized
+            priority
           />
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.72) 60%, rgba(0,0,0,0.88) 100%)',
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.45) 60%, rgba(0,0,0,0.7) 100%)',
           }} />
-        </div>
+        </div>,
+        document.body
       )}
       <PageLayout activePath='/play'>
       <div className='relative flex flex-col gap-3 py-4 px-5 lg:px-[3rem] 2xl:px-20 pb-40 md:pb-safe-bottom'>

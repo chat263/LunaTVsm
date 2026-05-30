@@ -25,6 +25,8 @@ interface MobileActionSheetProps {
   totalEpisodes?: number;
   origin?: 'vod' | 'live';
   doubanId?: number;
+  videoTitle?: string;
+  videoYear?: string;
 }
 
 const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
@@ -40,6 +42,8 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
   totalEpisodes,
   origin = 'vod',
   doubanId,
+  videoTitle,
+  videoYear,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -103,23 +107,47 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
 
   // 打开时异步加载豆瓣详情
   useEffect(() => {
-    if (!isOpen || !doubanId || doubanId === 0) {
+    if (!isOpen) {
       setDoubanDetails(null);
       setShowScrollHint(false);
       return;
     }
+
     setDoubanDetails(null);
     setShowScrollHint(false);
-    fetch(`/api/douban/details?id=${doubanId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(res => {
-        if (res?.code === 200 && res?.data) {
-          setDoubanDetails(res.data);
+
+    const load = async () => {
+      let id = doubanId && doubanId > 0 ? String(doubanId) : null;
+
+      // 没有 doubanId 时用标题搜豆瓣 suggest 拿 ID
+      if (!id && videoTitle) {
+        try {
+          const res = await fetch(
+            `/api/douban/suggest?q=${encodeURIComponent(videoTitle.trim())}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const hit = data?.[0];
+            if (hit?.id) id = hit.id;
+          }
+        } catch {}
+      }
+
+      if (!id) return;
+
+      try {
+        const res = await fetch(`/api/douban/details?id=${id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.code === 200 && data?.data) {
+          setDoubanDetails(data.data);
           setShowScrollHint(true);
         }
-      })
-      .catch(() => {});
-  }, [isOpen, doubanId]);
+      } catch {}
+    };
+
+    load();
+  }, [isOpen, doubanId, videoTitle]);
 
   // 阻止背景滚动
   useEffect(() => {
