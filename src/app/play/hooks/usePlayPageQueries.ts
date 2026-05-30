@@ -15,9 +15,10 @@
  * - External API 缓存策略
  */
 
-import { useQuery, queryOptions } from '@tanstack/react-query';
+import { useQuery, queryOptions, keepPreviousData } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { getDoubanDetails, getDoubanComments } from '@/lib/douban.client';
+import { searchTMDBBackdrop } from '@/lib/tmdb-backdrop.client';
 
 // ============================================================================
 // 类型定义
@@ -182,5 +183,32 @@ export function useShortdramaDetailsQuery(
   return useQuery({
     ...shortdramaDetailsOptions(shortdramaId),
     enabled: enabled !== undefined ? enabled : !!shortdramaId,
+  });
+}
+
+// ============================================================================
+// Hook: TMDB Backdrop 查询
+// ============================================================================
+
+const tmdbBackdropOptions = (title?: string, year?: string) => queryOptions({
+  queryKey: ['tmdb', 'backdrop', title, year],
+  queryFn: async () => {
+    if (!title) return null;
+    return searchTMDBBackdrop(title, year);
+  },
+  staleTime: 60 * 60 * 1000, // 1小时
+  gcTime: 2 * 60 * 60 * 1000,
+  retry: 1,
+});
+
+export function useTMDBBackdropQuery(
+  title?: string,
+  year?: string,
+  enabled?: boolean
+): UseQueryResult<string | null, Error> {
+  return useQuery({
+    ...tmdbBackdropOptions(title, year),
+    enabled: enabled !== undefined ? enabled : !!title,
+    placeholderData: keepPreviousData,
   });
 }

@@ -1737,6 +1737,9 @@ const VideoCard = forwardRef<VideoCardHandle, VideoCardProps>(function VideoCard
         currentEpisode={currentEpisode}
         totalEpisodes={actualEpisodes}
         origin={origin}
+        doubanId={actualDoubanId}
+        videoTitle={actualTitle}
+        videoYear={actualYear}
       />
 
       {/* AI问片弹窗 */}
