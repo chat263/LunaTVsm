@@ -26,7 +26,7 @@ import QueryProvider from '../components/QueryProvider';
 import { CinematicLoadingFallback } from '../components/CinematicLoadingFallback';
 import RouteWarmup from '../components/RouteWarmup';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], preload: false });
 export const dynamic = 'force-dynamic';
 
 // 动态生成 metadata，支持配置更新后的标题变化
@@ -120,7 +120,8 @@ export default async function RootLayout({
     DOUBAN_PROXY: doubanProxy,
     DOUBAN_IMAGE_PROXY_TYPE: doubanImageProxyType,
     DOUBAN_IMAGE_PROXY: doubanImageProxy,
-    BANGUMI_IMAGE_PROXY_TYPE: process.env.NEXT_PUBLIC_BANGUMI_IMAGE_PROXY_TYPE || 'server',
+    BANGUMI_IMAGE_PROXY_TYPE:
+      process.env.NEXT_PUBLIC_BANGUMI_IMAGE_PROXY_TYPE || 'server',
     BANGUMI_IMAGE_PROXY: process.env.NEXT_PUBLIC_BANGUMI_IMAGE_PROXY || '',
     DISABLE_YELLOW_FILTER: disableYellowFilter,
     CUSTOM_CATEGORIES: customCategories,
