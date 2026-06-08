@@ -26,8 +26,13 @@ import ChatFloatingWindow from '../components/watch-room/ChatFloatingWindow';
 import QueryProvider from '../components/QueryProvider';
 import { CinematicLoadingFallback } from '../components/CinematicLoadingFallback';
 import RouteWarmup from '../components/RouteWarmup';
-
-const inter = Inter({ subsets: ['latin'], preload: false });
+import localFont from 'next/font/local';
+const inter = localFont({
+  src: './Inter-VariableFont_opsz,wght.ttf', // 调整路径
+  display: 'swap',
+  variable: '--font-inter', // 如果用 CSS variable
+  // subsets removed: Local font config does not accept `subsets` option
+});
 export const dynamic = 'force-dynamic';
 
 // 动态生成 metadata，支持配置更新后的标题变化
