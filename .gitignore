@@ -64,9 +64,7 @@ docker
 AGENT.md
 TVBOX_DEV.md
 docker-compose.yml
-<<<<<<< HEAD
 
-=======
 package-lock.json
 
 # crash logs
@@ -75,3 +73,4 @@ crash-reports.jsonl
 
 # sqlite data
 data/
+server1.js
