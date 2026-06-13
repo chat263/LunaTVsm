@@ -80,24 +80,28 @@ export const UserMenu: React.FC = () => {
     return 'localstorage';
   });
   const [mounted, setMounted] = useState(false);
-  const [watchingUpdates, setWatchingUpdates] = useState<WatchingUpdate | null>(null);
+  const [watchingUpdates, setWatchingUpdates] = useState<WatchingUpdate | null>(
+    null,
+  );
   const [hasUnreadUpdates, setHasUnreadUpdates] = useState(false);
 
-  const saveobj = {curtime:0};
+  const saveobj = { curtime: 0 };
   const [setShowWatchRoom] = useState(false);
 
-  const [dismissedReleases, setDismissedReleases] = useState<Set<string>>(() => {
-    // 从localStorage加载已忽略的新上映列表
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('moontv_dismissed_releases');
-        return saved ? new Set(JSON.parse(saved)) : new Set();
-      } catch {
-        return new Set();
+  const [dismissedReleases, setDismissedReleases] = useState<Set<string>>(
+    () => {
+      // 从localStorage加载已忽略的新上映列表
+      if (typeof window !== 'undefined') {
+        try {
+          const saved = localStorage.getItem('moontv_dismissed_releases');
+          return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch {
+          return new Set();
+        }
       }
-    }
-    return new Set();
-  });
+      return new Set();
+    },
+  );
   // 🚀 TanStack Query - 观影室配置
   const { data: showWatchRoom = false } = useWatchRoomConfigQuery();
   // 🚀 TanStack Query - 下载功能配置
@@ -108,10 +112,15 @@ export const UserMenu: React.FC = () => {
   // 🚀 TanStack Query - 数据失效工具
   const { invalidatePlayRecords } = useInvalidateUserMenuData();
 
-
   // Body 滚动锁定 - 使用 overflow 方式避免布局问题
   useEffect(() => {
-    if (isSettingsOpen || isChangePasswordOpen || isWatchingUpdatesOpen || isContinueWatchingOpen || isFavoritesOpen) {
+    if (
+      isSettingsOpen ||
+      isChangePasswordOpen ||
+      isWatchingUpdatesOpen ||
+      isContinueWatchingOpen ||
+      isFavoritesOpen
+    ) {
       const body = document.body;
       const html = document.documentElement;
 
@@ -124,23 +133,34 @@ export const UserMenu: React.FC = () => {
       html.style.overflow = 'hidden';
 
       return () => {
-
         // 恢复所有原始样式
         body.style.overflow = originalBodyOverflow;
         html.style.overflow = originalHtmlOverflow;
       };
     }
-  }, [isSettingsOpen, isChangePasswordOpen, isWatchingUpdatesOpen, isContinueWatchingOpen, isFavoritesOpen]);
+  }, [
+    isSettingsOpen,
+    isChangePasswordOpen,
+    isWatchingUpdatesOpen,
+    isContinueWatchingOpen,
+    isFavoritesOpen,
+  ]);
 
   // 数据查询条件（从 localStorage 读初始值，供 playRecords query 用）
   const [continueWatchingMinProgress] = useState(() =>
-    typeof window !== 'undefined' ? (Number(localStorage.getItem('continueWatchingMinProgress')) || 5) : 5
+    typeof window !== 'undefined'
+      ? Number(localStorage.getItem('continueWatchingMinProgress')) || 5
+      : 5,
   );
   const [continueWatchingMaxProgress] = useState(() =>
-    typeof window !== 'undefined' ? (Number(localStorage.getItem('continueWatchingMaxProgress')) || 100) : 100
+    typeof window !== 'undefined'
+      ? Number(localStorage.getItem('continueWatchingMaxProgress')) || 100
+      : 100,
   );
   const [enableContinueWatchingFilter] = useState(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('enableContinueWatchingFilter') === 'true' : false
+    typeof window !== 'undefined'
+      ? localStorage.getItem('enableContinueWatchingFilter') === 'true'
+      : false,
   );
 
   // 修改密码相关状态
@@ -150,10 +170,14 @@ export const UserMenu: React.FC = () => {
   const [passwordError, setPasswordError] = useState('');
 
   // 🚀 TanStack Query - 版本检查
-  const { data: updateStatus = null, isLoading: isChecking } = useVersionCheckQuery();
+  const { data: updateStatus = null, isLoading: isChecking } =
+    useVersionCheckQuery();
 
   // 数据查询条件
-  const dataQueryEnabled = typeof window !== 'undefined' && !!authInfo?.username && storageType !== 'localstorage';
+  const dataQueryEnabled =
+    typeof window !== 'undefined' &&
+    !!authInfo?.username &&
+    storageType !== 'localstorage';
 
   // 🚀 TanStack Query - 播放记录
   const { data: playRecords = [] } = usePlayRecordsQuery({
@@ -191,13 +215,17 @@ export const UserMenu: React.FC = () => {
   // 获取观看更新信息
   useEffect(() => {
     console.log('UserMenu watching-updates 检查条件:', {
-      'window': typeof window !== 'undefined',
+      window: typeof window !== 'undefined',
       'authInfo.username': authInfo?.username,
-      'storageType': storageType,
-      'storageType !== localstorage': storageType !== 'localstorage'
+      storageType: storageType,
+      'storageType !== localstorage': storageType !== 'localstorage',
     });
 
-    if (typeof window !== 'undefined' && authInfo?.username && storageType !== 'localstorage') {
+    if (
+      typeof window !== 'undefined' &&
+      authInfo?.username &&
+      storageType !== 'localstorage'
+    ) {
       console.log('开始加载 watching-updates 数据...');
 
       const updateWatchingUpdates = () => {
@@ -208,11 +236,16 @@ export const UserMenu: React.FC = () => {
         // 检测是否有新更新（包括新剧集更新和今日上映）
         // 过滤掉已忽略的新上映
         const activeReleases = updates.updatedSeries.filter(
-          series => series.hasNewRelease && !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`)
+          (series) =>
+            series.hasNewRelease &&
+            !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`),
         ).length;
 
         // 只要有更新或未忽略的今日上映，就显示红点
-        if (updates && ((updates.updatedCount || 0) > 0 || activeReleases > 0)) {
+        if (
+          updates &&
+          ((updates.updatedCount || 0) > 0 || activeReleases > 0)
+        ) {
           setHasUnreadUpdates(true);
         } else {
           setHasUnreadUpdates(false);
@@ -223,21 +256,21 @@ export const UserMenu: React.FC = () => {
       const forceInitialCheck = async () => {
         console.log('页面初始化，检查更新...');
         try {
-
           // 暂时清除缓存时间，强制检查一次
           const lastCheckTime = Date.now();
           if (lastCheckTime) {
-            if((lastCheckTime)-saveobj.curtime<10000&&saveobj.curtime-(lastCheckTime)<10000){
+            if (
+              lastCheckTime - saveobj.curtime < 10000 &&
+              saveobj.curtime - lastCheckTime < 10000
+            ) {
               return;
             }
-            saveobj.curtime=(lastCheckTime);
+            saveobj.curtime = lastCheckTime;
           }
-
 
           // 🔧 修复：不使用强制刷新，让缓存机制生效（30分钟）
           // 如果缓存有效，直接使用缓存；如果过期，自动重新检查
           await checkWatchingUpdates();
-
 
           // 更新UI
           updateWatchingUpdates();
@@ -290,7 +323,6 @@ export const UserMenu: React.FC = () => {
     };
   }, [dataQueryEnabled, invalidatePlayRecords]);
 
-
   const handleMenuClick = async () => {
     const willOpen = !isOpen;
     setIsOpen(willOpen);
@@ -318,11 +350,16 @@ export const UserMenu: React.FC = () => {
         // 重新计算未读状态
         // 过滤掉已忽略的新上映
         const activeReleases = updates.updatedSeries.filter(
-          series => series.hasNewRelease && !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`)
+          (series) =>
+            series.hasNewRelease &&
+            !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`),
         ).length;
 
         // 只要有更新或未忽略的今日上映，就显示红点
-        if (updates && ((updates.updatedCount || 0) > 0 || activeReleases > 0)) {
+        if (
+          updates &&
+          ((updates.updatedCount || 0) > 0 || activeReleases > 0)
+        ) {
           setHasUnreadUpdates(true);
         } else {
           setHasUnreadUpdates(false);
@@ -413,7 +450,10 @@ export const UserMenu: React.FC = () => {
 
     // 保存到localStorage
     try {
-      localStorage.setItem('moontv_dismissed_releases', JSON.stringify([...newDismissed]));
+      localStorage.setItem(
+        'moontv_dismissed_releases',
+        JSON.stringify([...newDismissed]),
+      );
     } catch (error) {
       console.error('保存已忽略列表失败:', error);
     }
@@ -421,10 +461,13 @@ export const UserMenu: React.FC = () => {
     // 重新计算红点状态
     if (watchingUpdates) {
       const remainingReleases = watchingUpdates.updatedSeries.filter(
-        series => series.hasNewRelease && !newDismissed.has(`${series.sourceKey}+${series.videoId}`)
+        (series) =>
+          series.hasNewRelease &&
+          !newDismissed.has(`${series.sourceKey}+${series.videoId}`),
       ).length;
 
-      const hasUpdates = (watchingUpdates.updatedCount || 0) > 0 || remainingReleases > 0;
+      const hasUpdates =
+        (watchingUpdates.updatedCount || 0) > 0 || remainingReleases > 0;
       setHasUnreadUpdates(hasUpdates);
     }
   };
@@ -442,19 +485,22 @@ export const UserMenu: React.FC = () => {
   };
 
   // 检查播放记录是否有新集数更新
-  const getNewEpisodesCount = (record: PlayRecord & { key: string }): number => {
+  const getNewEpisodesCount = (
+    record: PlayRecord & { key: string },
+  ): number => {
     if (!watchingUpdates || !watchingUpdates.updatedSeries) return 0;
 
     const { source, id } = parseKey(record.key);
 
     // 在watchingUpdates中查找匹配的剧集
-    const matchedSeries = watchingUpdates.updatedSeries.find(series =>
-      series.sourceKey === source &&
-      series.videoId === id &&
-      series.hasNewEpisode
+    const matchedSeries = watchingUpdates.updatedSeries.find(
+      (series) =>
+        series.sourceKey === source &&
+        series.videoId === id &&
+        series.hasNewEpisode,
     );
 
-    return matchedSeries ? (matchedSeries.newEpisodes || 0) : 0;
+    return matchedSeries ? matchedSeries.newEpisodes || 0 : 0;
   };
 
   const handleChangePassword = () => {
@@ -514,7 +560,9 @@ export const UserMenu: React.FC = () => {
 
   // 检查是否显示管理面板按钮
   const showAdminPanel =
-    authInfo?.role === 'owner' || authInfo?.role === 'admin';
+    authInfo?.role === 'owner' ||
+    authInfo?.role === 'admin' ||
+    authInfo?.username === process.env.USERNAME;
 
   // 检查是否显示修改密码按钮
   const showChangePassword =
@@ -524,13 +572,19 @@ export const UserMenu: React.FC = () => {
   const showPlayStats = authInfo?.username && storageType !== 'localstorage';
 
   // 检查是否显示更新提醒按钮（登录用户且非localstorage存储就显示）
-  const showWatchingUpdates = authInfo?.username && storageType !== 'localstorage';
+  const showWatchingUpdates =
+    authInfo?.username && storageType !== 'localstorage';
 
   // 检查是否有实际更新（用于显示红点）- 包括新剧集更新和新上映
-  const hasActualUpdates = watchingUpdates && ((watchingUpdates.updatedCount || 0) > 0 || (watchingUpdates.newReleasesCount || 0) > 0);
+  const hasActualUpdates =
+    watchingUpdates &&
+    ((watchingUpdates.updatedCount || 0) > 0 ||
+      (watchingUpdates.newReleasesCount || 0) > 0);
 
   // 计算更新数量（新剧集更新 + 新上映）
-  const totalUpdates = (watchingUpdates?.updatedCount || 0) + (watchingUpdates?.newReleasesCount || 0);
+  const totalUpdates =
+    (watchingUpdates?.updatedCount || 0) +
+    (watchingUpdates?.newReleasesCount || 0);
 
   // 调试信息
   console.log('UserMenu 更新提醒调试:', {
@@ -539,7 +593,7 @@ export const UserMenu: React.FC = () => {
     watchingUpdates,
     showWatchingUpdates,
     hasActualUpdates,
-    totalUpdates
+    totalUpdates,
   });
 
   // 角色中文映射
@@ -575,12 +629,13 @@ export const UserMenu: React.FC = () => {
                 当前用户
               </span>
               <span
-                className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${(authInfo?.role || 'user') === 'owner'
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
-                  : (authInfo?.role || 'user') === 'admin'
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                    : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                  }`}
+                className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                  (authInfo?.role || 'user') === 'owner'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                    : (authInfo?.role || 'user') === 'admin'
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                }`}
               >
                 {getRoleText(authInfo?.role || 'user')}
               </span>
@@ -635,7 +690,9 @@ export const UserMenu: React.FC = () => {
               <PlayCircle className='w-4 h-4 text-gray-500 dark:text-gray-400' />
               <span className='font-medium'>继续观看</span>
               {playRecords.length > 0 && (
-                <span className='ml-auto text-xs text-gray-400'>{playRecords.length}</span>
+                <span className='ml-auto text-xs text-gray-400'>
+                  {playRecords.length}
+                </span>
               )}
             </button>
           )}
@@ -649,7 +706,9 @@ export const UserMenu: React.FC = () => {
               <Heart className='w-4 h-4 text-gray-500 dark:text-gray-400' />
               <span className='font-medium'>我的收藏</span>
               {favorites.length > 0 && (
-                <span className='ml-auto text-xs text-gray-400'>{favorites.length}</span>
+                <span className='ml-auto text-xs text-gray-400'>
+                  {favorites.length}
+                </span>
               )}
             </button>
           )}
@@ -673,7 +732,9 @@ export const UserMenu: React.FC = () => {
             >
               <BarChart3 className='w-4 h-4 text-gray-500 dark:text-gray-400' />
               <span className='font-medium'>
-                {authInfo?.role === 'owner' || authInfo?.role === 'admin' ? '播放统计' : '个人统计'}
+                {authInfo?.role === 'owner' || authInfo?.role === 'admin'
+                  ? '播放统计'
+                  : '个人统计'}
               </span>
             </button>
           )}
@@ -718,20 +779,24 @@ export const UserMenu: React.FC = () => {
             >
               <Download className='w-4 h-4 text-gray-500 dark:text-gray-400' />
               <span className='font-medium'>下载管理</span>
-              {tasks.filter(t => t.status === 'downloading').length > 0 && (
+              {tasks.filter((t) => t.status === 'downloading').length > 0 && (
                 <span className='ml-auto flex items-center gap-1'>
                   <span className='relative flex h-2 w-2'>
                     <span className='animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75'></span>
                     <span className='relative inline-flex rounded-full h-2 w-2 bg-green-500'></span>
                   </span>
                   <span className='text-xs text-green-600 dark:text-green-400'>
-                    {tasks.filter(t => t.status === 'downloading').length}
+                    {tasks.filter((t) => t.status === 'downloading').length}
                   </span>
                 </span>
               )}
-              {tasks.length > 0 && tasks.filter(t => t.status === 'downloading').length === 0 && (
-                <span className='ml-auto text-xs text-gray-400'>{tasks.length}</span>
-              )}
+              {tasks.length > 0 &&
+                tasks.filter((t) => t.status === 'downloading').length ===
+                  0 && (
+                  <span className='ml-auto text-xs text-gray-400'>
+                    {tasks.length}
+                  </span>
+                )}
             </button>
           )}
 
@@ -775,12 +840,13 @@ export const UserMenu: React.FC = () => {
                 updateStatus &&
                 updateStatus !== UpdateStatus.FETCH_FAILED && (
                   <div
-                    className={`w-2 h-2 rounded-full -translate-y-2 ${updateStatus === UpdateStatus.HAS_UPDATE
-                      ? 'bg-yellow-500'
-                      : updateStatus === UpdateStatus.NO_UPDATE
-                        ? 'bg-green-400'
-                        : ''
-                      }`}
+                    className={`w-2 h-2 rounded-full -translate-y-2 ${
+                      updateStatus === UpdateStatus.HAS_UPDATE
+                        ? 'bg-yellow-500'
+                        : updateStatus === UpdateStatus.NO_UPDATE
+                          ? 'bg-green-400'
+                          : ''
+                    }`}
                   ></div>
                 )}
             </div>
@@ -811,9 +877,7 @@ export const UserMenu: React.FC = () => {
       />
 
       {/* 修改密码面板 */}
-      <div
-        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-1001 overflow-hidden'
-      >
+      <div className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-1001 overflow-hidden'>
         {/* 内容容器 - 独立的滚动区域 */}
         <div
           className='h-full p-6'
@@ -928,9 +992,7 @@ export const UserMenu: React.FC = () => {
       />
 
       {/* 更新弹窗 */}
-      <div
-        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-xl shadow-xl z-1001 flex flex-col'
-      >
+      <div className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-xl shadow-xl z-1001 flex flex-col'>
         {/* 内容容器 - 独立的滚动区域 */}
         <div
           className='flex-1 p-6 overflow-y-auto'
@@ -978,107 +1040,145 @@ export const UserMenu: React.FC = () => {
               </div>
             )}
             {/* 新上映的剧集 */}
-            {watchingUpdates && watchingUpdates.updatedSeries.filter(series => series.hasNewRelease && !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`)).length > 0 && (
-              <div className='mb-8'>
-                <div className='flex items-center gap-2 mb-4'>
-                  <h4 className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    🎬 新上映
-                  </h4>
-                  <div className='flex items-center gap-1'>
-                    <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
-                    <span className='text-sm text-green-500 font-medium'>
-                      {watchingUpdates.updatedSeries.filter(series => series.hasNewRelease && !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`)).length}部新上映
-                    </span>
+            {watchingUpdates &&
+              watchingUpdates.updatedSeries.filter(
+                (series) =>
+                  series.hasNewRelease &&
+                  !dismissedReleases.has(
+                    `${series.sourceKey}+${series.videoId}`,
+                  ),
+              ).length > 0 && (
+                <div className='mb-8'>
+                  <div className='flex items-center gap-2 mb-4'>
+                    <h4 className='text-lg font-semibold text-gray-900 dark:text-white'>
+                      🎬 新上映
+                    </h4>
+                    <div className='flex items-center gap-1'>
+                      <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
+                      <span className='text-sm text-green-500 font-medium'>
+                        {
+                          watchingUpdates.updatedSeries.filter(
+                            (series) =>
+                              series.hasNewRelease &&
+                              !dismissedReleases.has(
+                                `${series.sourceKey}+${series.videoId}`,
+                              ),
+                          ).length
+                        }
+                        部新上映
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'>
-                  {watchingUpdates.updatedSeries
-                    .filter(series => series.hasNewRelease && !dismissedReleases.has(`${series.sourceKey}+${series.videoId}`))
-                    .map((series, index) => (
-                      <div key={`release-${series.title}_${series.year}_${index}`} className='relative group/card'>
-                        <div className='relative group-hover/card:z-5 transition-all duration-300'>
-                          <VideoCard
-                            title={series.title}
-                            poster={series.cover}
-                            year={series.year}
-                            source={series.sourceKey}
-                            source_name={series.source_name}
-                            episodes={series.totalEpisodes}
-                            id={series.videoId}
-                            onDelete={undefined}
-                            type={series.totalEpisodes > 1 ? 'tv' : 'movie'}
-                            from="favorite"
-                            remarks={series.remarks}
-                            releaseDate={series.releaseDate}
-                          />
-                        </div>
-                        {/* 新上映徽章 */}
-                        <div className='absolute -top-2 -right-2 bg-green-600 text-white text-xs px-2 py-0.5 rounded-md shadow-lg animate-pulse z-10 font-bold'>
-                          新上映
-                        </div>
-                        {/* 不再提醒按钮 */}
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleDismissRelease(series.sourceKey, series.videoId);
-                          }}
-                          className='absolute -top-2 -left-2 bg-gray-800/80 hover:bg-gray-900 text-white rounded-full p-1 shadow-lg z-10 opacity-0 group-hover/card:opacity-100 transition-opacity'
-                          title='不再提醒'
+                  <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'>
+                    {watchingUpdates.updatedSeries
+                      .filter(
+                        (series) =>
+                          series.hasNewRelease &&
+                          !dismissedReleases.has(
+                            `${series.sourceKey}+${series.videoId}`,
+                          ),
+                      )
+                      .map((series, index) => (
+                        <div
+                          key={`release-${series.title}_${series.year}_${index}`}
+                          className='relative group/card'
                         >
-                          <X className='w-3 h-3' />
-                        </button>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-            {/* 有新集数的剧集 */}
-            {watchingUpdates && watchingUpdates.updatedSeries.filter(series => series.hasNewEpisode).length > 0 && (
-              <div>
-                <div className='flex items-center gap-2 mb-4'>
-                  <h4 className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    新集更新
-                  </h4>
-                  <div className='flex items-center gap-1'>
-                    <div className='w-2 h-2 bg-red-500 rounded-full animate-pulse'></div>
-                    <span className='text-sm text-red-500 font-medium'>
-                      {watchingUpdates.updatedSeries.filter(series => series.hasNewEpisode).length}部剧集有更新
-                    </span>
+                          <div className='relative group-hover/card:z-5 transition-all duration-300'>
+                            <VideoCard
+                              title={series.title}
+                              poster={series.cover}
+                              year={series.year}
+                              source={series.sourceKey}
+                              source_name={series.source_name}
+                              episodes={series.totalEpisodes}
+                              id={series.videoId}
+                              onDelete={undefined}
+                              type={series.totalEpisodes > 1 ? 'tv' : 'movie'}
+                              from='favorite'
+                              remarks={series.remarks}
+                              releaseDate={series.releaseDate}
+                            />
+                          </div>
+                          {/* 新上映徽章 */}
+                          <div className='absolute -top-2 -right-2 bg-green-600 text-white text-xs px-2 py-0.5 rounded-md shadow-lg animate-pulse z-10 font-bold'>
+                            新上映
+                          </div>
+                          {/* 不再提醒按钮 */}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDismissRelease(
+                                series.sourceKey,
+                                series.videoId,
+                              );
+                            }}
+                            className='absolute -top-2 -left-2 bg-gray-800/80 hover:bg-gray-900 text-white rounded-full p-1 shadow-lg z-10 opacity-0 group-hover/card:opacity-100 transition-opacity'
+                            title='不再提醒'
+                          >
+                            <X className='w-3 h-3' />
+                          </button>
+                        </div>
+                      ))}
                   </div>
                 </div>
+              )}
+            {/* 有新集数的剧集 */}
+            {watchingUpdates &&
+              watchingUpdates.updatedSeries.filter(
+                (series) => series.hasNewEpisode,
+              ).length > 0 && (
+                <div>
+                  <div className='flex items-center gap-2 mb-4'>
+                    <h4 className='text-lg font-semibold text-gray-900 dark:text-white'>
+                      新集更新
+                    </h4>
+                    <div className='flex items-center gap-1'>
+                      <div className='w-2 h-2 bg-red-500 rounded-full animate-pulse'></div>
+                      <span className='text-sm text-red-500 font-medium'>
+                        {
+                          watchingUpdates.updatedSeries.filter(
+                            (series) => series.hasNewEpisode,
+                          ).length
+                        }
+                        部剧集有更新
+                      </span>
+                    </div>
+                  </div>
 
-                <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'>
-                  {watchingUpdates.updatedSeries
-                    .filter(series => series.hasNewEpisode)
-                    .map((series, index) => (
-                      <div key={`new-${series.title}_${series.year}_${index}`} className='relative group/card'>
-                        <div className='relative group-hover/card:z-5 transition-all duration-300'>
-                          <VideoCard
-                            title={series.title}
-                            poster={series.cover}
-                            year={series.year}
-                            source={series.sourceKey}
-                            source_name={series.source_name}
-                            episodes={series.totalEpisodes}
-                            currentEpisode={series.currentEpisode}
-                            id={series.videoId}
-                            onDelete={undefined}
-                            type={series.totalEpisodes > 1 ? 'tv' : ''}
-                            from="playrecord"
-                          />
+                  <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'>
+                    {watchingUpdates.updatedSeries
+                      .filter((series) => series.hasNewEpisode)
+                      .map((series, index) => (
+                        <div
+                          key={`new-${series.title}_${series.year}_${index}`}
+                          className='relative group/card'
+                        >
+                          <div className='relative group-hover/card:z-5 transition-all duration-300'>
+                            <VideoCard
+                              title={series.title}
+                              poster={series.cover}
+                              year={series.year}
+                              source={series.sourceKey}
+                              source_name={series.source_name}
+                              episodes={series.totalEpisodes}
+                              currentEpisode={series.currentEpisode}
+                              id={series.videoId}
+                              onDelete={undefined}
+                              type={series.totalEpisodes > 1 ? 'tv' : ''}
+                              from='playrecord'
+                            />
+                          </div>
+                          {/* 新集数徽章 - Netflix 统一风格 */}
+                          <div className='absolute -top-2 -right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded-md shadow-lg animate-pulse z-10 font-bold'>
+                            +{series.newEpisodes}
+                          </div>
                         </div>
-                        {/* 新集数徽章 - Netflix 统一风格 */}
-                        <div className='absolute -top-2 -right-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded-md shadow-lg animate-pulse z-10 font-bold'>
-                          +{series.newEpisodes}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
-              </div>
-            )}
-
+              )}
           </div>
 
           {/* 底部说明 */}
@@ -1166,7 +1266,9 @@ export const UserMenu: React.FC = () => {
                         <div className='flex-1 bg-gray-600 rounded-full h-1'>
                           <div
                             className='bg-blue-500 h-1 rounded-full transition-all'
-                            style={{ width: `${Math.min(getProgress(record), 100)}%` }}
+                            style={{
+                              width: `${Math.min(getProgress(record), 100)}%`,
+                            }}
                           />
                         </div>
                         <span className='text-xs text-white font-medium'>
@@ -1184,12 +1286,13 @@ export const UserMenu: React.FC = () => {
           {playRecords.length === 0 && (
             <div className='text-center py-12'>
               <PlayCircle className='w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4' />
-              <p className='text-gray-500 dark:text-gray-400 mb-2'>暂无需要继续观看的内容</p>
+              <p className='text-gray-500 dark:text-gray-400 mb-2'>
+                暂无需要继续观看的内容
+              </p>
               <p className='text-xs text-gray-400 dark:text-gray-500'>
                 {enableContinueWatchingFilter
                   ? `观看进度在${continueWatchingMinProgress}%-${continueWatchingMaxProgress}%之间且播放时间超过2分钟的内容会显示在这里`
-                  : '播放时间超过2分钟的所有内容都会显示在这里'
-                }
+                  : '播放时间超过2分钟的所有内容都会显示在这里'}
               </p>
             </div>
           )}
@@ -1255,7 +1358,10 @@ export const UserMenu: React.FC = () => {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 const releaseDate = new Date(favorite.releaseDate);
-                const daysDiff = Math.ceil((releaseDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const daysDiff = Math.ceil(
+                  (releaseDate.getTime() - today.getTime()) /
+                    (1000 * 60 * 60 * 24),
+                );
 
                 // 根据天数差异动态更新显示文字
                 if (daysDiff < 0) {
@@ -1337,7 +1443,8 @@ export const UserMenu: React.FC = () => {
           <User className='w-full h-full relative z-10 group-hover:scale-110 transition-transform duration-300' />
         </button>
         {/* 统一更新提醒点：版本更新或剧集更新都显示橙色点 */}
-        {((updateStatus === UpdateStatus.HAS_UPDATE) || (hasUnreadUpdates && totalUpdates > 0)) && (
+        {(updateStatus === UpdateStatus.HAS_UPDATE ||
+          (hasUnreadUpdates && totalUpdates > 0)) && (
           <div className='absolute top-[2px] right-[2px] w-2 h-2 bg-yellow-500 rounded-full animate-pulse shadow-lg shadow-yellow-500/50'></div>
         )}
       </div>
