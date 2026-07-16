@@ -79,11 +79,7 @@ import {
   getDoubanActorMovies,
 } from '@/lib/douban.client';
 import { SearchResult } from '@/lib/types';
-import {
-  getVideoResolutionFromM3u8,
-  processImageUrl,
-  VideoSourceTestResult,
-} from '@/lib/utils';
+import { applyVideoPlayProxy, getVideoResolutionFromM3u8, processImageUrl, stripVideoPlayProxy, VideoSourceTestResult } from '@/lib/utils';
 import { useWatchRoomContextSafe } from '@/components/WatchRoomProvider';
 import { useWatchRoomSync } from './hooks/useWatchRoomSync';
 import {
@@ -2521,7 +2517,7 @@ function PlayPageClient() {
 
         if (response.ok) {
           const result = await response.json();
-          const newUrl = result.url || '';
+          const newUrl = applyVideoPlayProxy(result.url || '');
           if (newUrl !== videoUrl) {
             setVideoUrl(newUrl);
           }
@@ -2550,6 +2546,11 @@ function PlayPageClient() {
       if (isEmbySource && newUrl && currentAudioTrackRef.current >= 0) {
         newUrl = appendAudioStreamIndex(newUrl, currentAudioTrackRef.current);
         console.log('🎵 换集时应用音轨参数:', currentAudioTrackRef.current);
+      }
+
+      // ☁️ Emby 源需要自定义鉴权头，不走 Cloudflare Worker 代理；其余源套一层加速
+      if (!isEmbySource) {
+        newUrl = applyVideoPlayProxy(newUrl);
       }
 
       if (newUrl !== videoUrl) {
@@ -4842,18 +4843,19 @@ function PlayPageClient() {
           // 🔥 修复：标记切换中，阻止 video:ratechange 将浏览器重置的 1.0 保存到 localStorage
           isSourceSwitchingRef.current = true;
 
-          let switchPromise: Promise<any>;
-          if (isEpisodeChange) {
-            console.log(`🎯 开始切换集数: ${videoUrl} (重置播放时间到0)`);
-            // 切换集数时重置播放时间到0
-            switchPromise = artPlayerRef.current.switchUrl(videoUrl);
-          } else {
-            console.log(
-              `🎯 开始切换源: ${videoUrl} (保持进度: ${currentTime.toFixed(2)}s)`,
-            );
-            // 换源时保持播放进度
-            switchPromise = artPlayerRef.current.switchQuality(videoUrl);
-          }
+        // ☁️ 新地址切换，重置 Worker 代理降级标记（非 m3u8 路径用）
+        artPlayerRef.current._proxyFallbackDone = false;
+
+        let switchPromise: Promise<any>;
+        if (isEpisodeChange) {
+          console.log(`🎯 开始切换集数: ${videoUrl} (重置播放时间到0)`);
+          // 切换集数时重置播放时间到0
+          switchPromise = artPlayerRef.current.switchUrl(videoUrl);
+        } else {
+          console.log(`🎯 开始切换源: ${videoUrl} (保持进度: ${currentTime.toFixed(2)}s)`);
+          // 换源时保持播放进度
+          switchPromise = artPlayerRef.current.switchQuality(videoUrl);
+        }
 
           // 创建切换Promise
           switchPromise = switchPromise
@@ -5029,12 +5031,15 @@ function PlayPageClient() {
                 return;
               }
 
-              if (video.hls) {
-                video.hls.destroy();
-              }
+            if (video.hls) {
+              video.hls.destroy();
+            }
 
-              // 在函数内部重新检测iOS13+设备
-              const localIsIOS13 = isIOS13;
+            // ☁️ 新地址加载，重置 Worker 代理降级标记
+            (video as any)._proxyFallbackDone = false;
+
+            // 在函数内部重新检测iOS13+设备
+            const localIsIOS13 = isIOS13;
 
               // 获取用户的缓冲模式配置
               const bufferConfig = getHlsBufferConfig();
@@ -5241,63 +5246,70 @@ function PlayPageClient() {
                   return;
                 }
 
-                if (data.fatal) {
-                  switch (data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                      console.log('网络错误，尝试恢复...');
-                      hls.startLoad();
+              if (data.fatal) {
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR: {
+                    // ☁️ Worker 代理请求致命失败（超时/502等）时，自动降级到直连原始地址，避免播放中断
+                    const rawUrl = !(video as any)._proxyFallbackDone ? stripVideoPlayProxy(url) : null;
+                    if (rawUrl) {
+                      console.warn('Worker 代理网络错误，降级为直连:', rawUrl);
+                      (video as any)._proxyFallbackDone = true;
+                      hls.loadSource(rawUrl);
                       break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                      console.log('媒体错误，尝试恢复...');
-                      hls.recoverMediaError();
-                      break;
-                    default:
-                      console.log('无法恢复的错误');
-                      hls.destroy();
-                      break;
-                  }
-                }
-              });
-            },
-          },
-          icons: {
-            loading:
-              '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj48cGF0aCBkPSJNMjUuMjUxIDYuNDYxYy0xMC4zMTggMC0xOC42ODMgOC4zNjUtMTguNjgzIDE4LjY4M2g0LjA2OGMwLTguMDcgNi41NDUtMTQuNjE1IDE0LjYxNS0xNC42MTVWNi40NjF6IiBmaWxsPSIjMDA5Njg4Ij48YW5pbWF0ZVRyYW5zZm9ybSBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iIGF0dHJpYnV0ZVR5cGU9IlhNTCIgZHVyPSIxcyIgZnJvbT0iMCAyNSAyNSIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiIHRvPSIzNjAgMjUgMjUiIHR5cGU9InJvdGF0ZSIvPjwvcGF0aD48L3N2Zz4=">',
-          },
-          settings: [
-            {
-              html: '去广告',
-              icon: '<text x="50%" y="50%" font-size="20" font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">AD</text>',
-              tooltip: blockAdEnabled ? '已开启' : '已关闭',
-              onClick() {
-                const newVal = !blockAdEnabled;
-                try {
-                  localStorage.setItem('enable_blockad', String(newVal));
-                  if (artPlayerRef.current) {
-                    resumeTimeRef.current = artPlayerRef.current.currentTime;
-                    if (artPlayerRef.current.video.hls) {
-                      artPlayerRef.current.video.hls.destroy();
                     }
-                    artPlayerRef.current.destroy(false);
-                    artPlayerRef.current = null;
+                    console.log('网络错误，尝试恢复...');
+                    hls.startLoad();
+                    break;
                   }
-                  setBlockAdEnabled(newVal);
-                } catch (_) {
-                  // ignore
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    console.log('媒体错误，尝试恢复...');
+                    hls.recoverMediaError();
+                    break;
+                  default:
+                    console.log('无法恢复的错误');
+                    hls.destroy();
+                    break;
                 }
-                return newVal ? '当前开启' : '当前关闭';
-              },
+              }
+            });
+          },
+        },
+        icons: {
+          loading:
+            '<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj48cGF0aCBkPSJNMjUuMjUxIDYuNDYxYy0xMC4zMTggMC0xOC42ODMgOC4zNjUtMTguNjgzIDE4LjY4M2g0LjA2OGMwLTguMDcgNi41NDUtMTQuNjE1IDE0LjYxNS0xNC42MTVWNi40NjF6IiBmaWxsPSIjMDA5Njg4Ij48YW5pbWF0ZVRyYW5zZm9ybSBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iIGF0dHJpYnV0ZVR5cGU9IlhNTCIgZHVyPSIxcyIgZnJvbT0iMCAyNSAyNSIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiIHRvPSIzNjAgMjUgMjUiIHR5cGU9InJvdGF0ZSIvPjwvcGF0aD48L3N2Zz4=">',
+        },
+        settings: [
+          {
+            html: '去广告',
+            icon: '<text x="50%" y="50%" font-size="20" font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">AD</text>',
+            tooltip: blockAdEnabled ? '已开启' : '已关闭',
+            onClick() {
+              const newVal = !blockAdEnabled;
+              try {
+                localStorage.setItem('enable_blockad', String(newVal));
+                if (artPlayerRef.current) {
+                  resumeTimeRef.current = artPlayerRef.current.currentTime;
+                  if (artPlayerRef.current.video.hls) {
+                    artPlayerRef.current.video.hls.destroy();
+                  }
+                  artPlayerRef.current.destroy(false);
+                  artPlayerRef.current = null;
+                }
+                setBlockAdEnabled(newVal);
+              } catch (_) {
+                // ignore
+              }
+              return newVal ? '当前开启' : '当前关闭';
             },
-            {
-              name: '外部弹幕',
-              html: '外部弹幕',
-              icon: '<text x="50%" y="50%" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">外</text>',
-              tooltip: externalDanmuEnabled
-                ? '外部弹幕已开启'
-                : '外部弹幕已关闭',
-              switch: externalDanmuEnabled,
-              onSwitch: function (item: any) {
-                const nextState = !item.switch;
+          },
+          {
+            name: '外部弹幕',
+            html: '外部弹幕',
+            icon: '<text x="50%" y="50%" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="#ffffff">外</text>',
+            tooltip: externalDanmuEnabled ? '外部弹幕已开启' : '外部弹幕已关闭',
+            switch: externalDanmuEnabled,
+            onSwitch: function (item: any) {
+              const nextState = !item.switch;
 
                 // 🚀 使用优化后的弹幕操作处理函数
                 handleDanmuOperationOptimized(nextState);
@@ -6800,13 +6812,24 @@ function PlayPageClient() {
           }
         });
 
-        // 监听播放器错误
-        artPlayerRef.current.on('error', (err: any) => {
-          console.error('播放器错误:', err);
-          if (artPlayerRef.current.currentTime > 0) {
-            return;
+      // 监听播放器错误
+      artPlayerRef.current.on('error', (err: any) => {
+        console.error('播放器错误:', err);
+        if (artPlayerRef.current.currentTime > 0) {
+          return;
+        }
+
+        // ☁️ 非 m3u8 格式（走原生 <video src>）Worker 代理失败时，自动降级为直连原始地址
+        // m3u8 格式的降级在 customType.m3u8 的 Hls.Events.ERROR 处理里完成，此处跳过避免重复
+        if (!artPlayerRef.current._proxyFallbackDone) {
+          const rawUrl = stripVideoPlayProxy(videoUrl);
+          if (rawUrl && !/\.m3u8(\?|#|$)/i.test(videoUrl)) {
+            console.warn('Worker 代理播放错误，降级为直连:', rawUrl);
+            artPlayerRef.current._proxyFallbackDone = true;
+            artPlayerRef.current.switchUrl(rawUrl);
           }
-        });
+        }
+      });
 
         // 监听视频播放结束事件，自动播放下一集
         artPlayerRef.current.on('video:ended', () => {
