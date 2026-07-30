@@ -172,7 +172,7 @@ export default async function RootLayout({
       </head>
       <body
         translate='no'
-        className={`${inter.variable} min-h-screen bg-white text-gray-900 dark:bg-black dark:text-gray-200`}
+        className={`${inter.className} min-h-screen bg-white text-gray-900 dark:bg-black dark:text-gray-200`}
       >
         {/*
           iOS 沉浸式状态栏（black-translucent）下，状态栏图标固定为白色，
