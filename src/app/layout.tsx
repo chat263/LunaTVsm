@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter } from 'next/font/local';
 import nextDynamic from 'next/dynamic';
 import { cookies } from 'next/headers';
 import { Suspense } from 'react';
@@ -27,22 +27,28 @@ import { CinematicLoadingFallback } from '../components/CinematicLoadingFallback
 // 懒加载非关键 UI 组件，减少首屏 JS 体积（代码分割）
 // 未设置 ssr: false，保持服务端渲染兼容性
 const TranslationWarningToast = nextDynamic(() =>
-  import('../components/TranslationWarningToast').then((m) => m.TranslationWarningToast)
+  import('../components/TranslationWarningToast').then(
+    (m) => m.TranslationWarningToast,
+  ),
 );
 const SessionTracker = nextDynamic(() =>
-  import('../components/SessionTracker').then((m) => m.SessionTracker)
+  import('../components/SessionTracker').then((m) => m.SessionTracker),
 );
 const RouteWarmup = nextDynamic(() => import('../components/RouteWarmup'));
 const DownloadPanel = nextDynamic(() =>
-  import('../components/download/DownloadPanel').then((m) => m.DownloadPanel)
+  import('../components/download/DownloadPanel').then((m) => m.DownloadPanel),
 );
-const ChatFloatingWindow = nextDynamic(() => import('../components/watch-room/ChatFloatingWindow'));
+const ChatFloatingWindow = nextDynamic(
+  () => import('../components/watch-room/ChatFloatingWindow'),
+);
 
 const inter = Inter({
-  subsets: ['latin'],        // 根据需要添加 'chinese' 等
-  weight: ['100', '200', '300', '400','500', '600', '700', '800', '900'], // 或 'variable'
+  // 注意：这里的相对路径是相对于当前代码文件的，请根据实际情况调整 ../
+  src: '../Inter-VariableFont_opsz,wght.ttf',
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'], // 或 'variable'
   display: 'swap',
-  variable: '--font-inter',   // 可选，用于 CSS variable
+  style: 'normal',
+  variable: '--font-inter', // 可选，用于 CSS variable
 });
 export const dynamic = 'force-dynamic';
 
@@ -170,7 +176,10 @@ export default async function RootLayout({
         <meta name='google' content='notranslate' />
         {/* iOS PWA 沉浸式状态栏：manifest.json 里的同名字段对 Safari 无效，必须通过 meta 标签设置 */}
         <meta name='apple-mobile-web-app-capable' content='yes' />
-        <meta name='apple-mobile-web-app-status-bar-style' content='black-translucent' />
+        <meta
+          name='apple-mobile-web-app-status-bar-style'
+          content='black-translucent'
+        />
         <link rel='apple-touch-icon' href='/icons/icon-192x192.png' />
         {/* 将配置序列化后直接写入脚本，浏览器端可通过 window.RUNTIME_CONFIG 获取 */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
