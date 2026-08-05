@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/local';
+import InterLocal from 'next/font/local';
 import nextDynamic from 'next/dynamic';
 import { cookies } from 'next/headers';
 import { Suspense } from 'react';
@@ -42,7 +42,7 @@ const ChatFloatingWindow = nextDynamic(
   () => import('../components/watch-room/ChatFloatingWindow'),
 );
 
-const inter = Inter({
+const inter = InterLocal({
   src: './Inter-VariableFont_opsz,wght.ttf', // 调整路径
   display: 'swap',
   variable: '--font-inter', // 如果用 CSS variable
