@@ -43,12 +43,10 @@ const ChatFloatingWindow = nextDynamic(
 );
 
 const inter = Inter({
-  // 注意：这里的相对路径是相对于当前代码文件的，请根据实际情况调整 ../
-  src: '../Inter-VariableFont_opsz,wght.ttf',
-  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'], // 或 'variable'
+  src: './Inter-VariableFont_opsz,wght.ttf', // 调整路径
   display: 'swap',
-  style: 'normal',
-  variable: '--font-inter', // 可选，用于 CSS variable
+  variable: '--font-inter', // 如果用 CSS variable
+  // subsets removed: Local font config does not accept `subsets` option
 });
 export const dynamic = 'force-dynamic';
 
