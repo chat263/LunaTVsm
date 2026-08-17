@@ -2396,7 +2396,8 @@ function PlayPageClient() {
       if (!hls || hls.audioTrack === track.hlsIndex) return;
 
       try {
-        hls.audioTrack = track.hlsIndex;
+        // v1.7.0: nextAudioTrack 走调度式切换，避免 hls.audioTrack 直接赋值造成的卡顿/直播延迟增加
+        hls.nextAudioTrack = track.hlsIndex;
         setCurrentAudioTrack(track.hlsIndex);
         savePreferredAudioLang(track.language);
       } catch (error) {
@@ -5079,13 +5080,16 @@ function PlayPageClient() {
                       : 40 * 1000 * 1000 // iOS13+: 20MB, iOS: 30MB, Android: 40MB
                   : 600 * 1000 * 1000, // 桌面: 60MB (官方默认)
 
-                /* 网络加载优化 - 参考 defaultLoadPolicy */
-                maxLoadingDelay: isMobile ? (localIsIOS13 ? 2 : 3) : 4, // iOS13+设备更快超时
-                maxBufferHole: isMobile ? (localIsIOS13 ? 0.05 : 0.1) : 0.1, // 减少缓冲洞容忍度
+              /* 网络加载优化 - 参考 defaultLoadPolicy */
+              maxLoadingDelay: isMobile ? (localIsIOS13 ? 2 : 3) : 4, // iOS13+设备更快超时
+              maxBufferHole: isMobile ? (localIsIOS13 ? 0.05 : 0.1) : 0.1, // 减少缓冲洞容忍度
+              
+              /* Fragment管理 - 参考官方配置 */
+              liveDurationInfinity: false, // 避免无限缓冲 (官方默认false)
+              liveBackBufferLength: isMobile ? (localIsIOS13 ? 3 : 5) : null, // 已废弃，保持兼容
 
-                /* Fragment管理 - 参考官方配置 */
-                liveDurationInfinity: false, // 避免无限缓冲 (官方默认false)
-                liveBackBufferLength: isMobile ? (localIsIOS13 ? 3 : 5) : null, // 已废弃，保持兼容
+              // v1.7.0 新增：appendBuffer 卡死超时兜底，避免个别设备 SourceBuffer 无响应导致播放静默卡住不报错
+              appendTimeout: isMobile ? 8000 : 10000,
 
                 /* 高级优化配置 - 参考 StreamControllerConfig */
                 maxMaxBufferLength: isMobile ? (localIsIOS13 ? 60 : 120) : 3000, // 最大缓冲长度限制
@@ -5174,22 +5178,17 @@ function PlayPageClient() {
 
                   setCurrentAudioTrack(activeHlsIndex);
 
-                  // 应用用户偏好
-                  const preferredLang = loadPreferredAudioLang();
-                  if (preferredLang) {
-                    const preferredTrack = mappedTracks.find(
-                      (t) => normalizeAudioLang(t.language) === preferredLang,
-                    );
-                    if (
-                      preferredTrack &&
-                      typeof preferredTrack.hlsIndex === 'number' &&
-                      preferredTrack.hlsIndex !== activeHlsIndex
-                    ) {
-                      hls.audioTrack = preferredTrack.hlsIndex;
-                    }
-                  }
-                },
-              );
+              // 应用用户偏好
+              const preferredLang = loadPreferredAudioLang();
+              if (preferredLang) {
+                const preferredTrack = mappedTracks.find(
+                  t => normalizeAudioLang(t.language) === preferredLang
+                );
+                if (preferredTrack && typeof preferredTrack.hlsIndex === 'number' && preferredTrack.hlsIndex !== activeHlsIndex) {
+                  hls.nextAudioTrack = preferredTrack.hlsIndex;
+                }
+              }
+            });
 
               hls.on(
                 Hls.Events.AUDIO_TRACK_SWITCHED,
