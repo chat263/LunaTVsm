@@ -72,7 +72,48 @@ const DirectYouTubePlayer = ({ className = '' }: DirectYouTubePlayerProps) => {
   // 处理URL输入变化
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputUrl = e.target.value;
-    setUrl(inputUrl);
+      // 自动转换 YouTube URL 为 embed URL
+  let convertedUrl = inputUrl;
+
+  if (inputUrl) {
+    try {
+      const urlObj = new URL(inputUrl);
+      let videoId = '';
+
+      // youtube.com/watch?v=xxx
+      if (
+        urlObj.hostname === 'www.youtube.com' ||
+        urlObj.hostname === 'youtube.com' ||
+        urlObj.hostname === 'm.youtube.com'
+      ) {
+        if (urlObj.pathname === '/watch') {
+          videoId = urlObj.searchParams.get('v') || '';
+        }
+        // youtube.com/shorts/xxx
+        else if (urlObj.pathname.startsWith('/shorts/')) {
+          videoId = urlObj.pathname.split('/shorts/')[1].split('/')[0];
+        }
+        // youtube.com/embed/xxx
+        else if (urlObj.pathname.startsWith('/embed/')) {
+          videoId = urlObj.pathname.split('/embed/')[1].split('/')[0];
+        }
+      }
+
+      // youtu.be/xxx
+      else if (urlObj.hostname === 'youtu.be') {
+        videoId = urlObj.pathname.substring(1).split('/')[0];
+      }
+
+      if (videoId) {
+        convertedUrl = `https://www.youtube.com/embed/${videoId}`;
+      }
+    } catch {
+      // URL 格式不正确，保持原输入
+    }
+  }
+
+  setUrl(convertedUrl);
+    // setUrl(inputUrl);
     
     // 实时验证URL
     if (inputUrl.trim()) {
