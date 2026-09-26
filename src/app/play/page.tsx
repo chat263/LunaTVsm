@@ -546,6 +546,8 @@ function PlayPageClient() {
     parseInt(searchParams.get('douban_id') || '0') || 0,
   );
 
+  // 将浏览器标题与 videoTitle 绑定（见下方 currentEpisodeIndex 声明后）
+
   // TanStack Query queries - 豆瓣详情和评论（依赖 videoDoubanId）
   const {
     data: movieDetails,
@@ -668,6 +670,20 @@ function PlayPageClient() {
       setCurrentEpisodeIndex(newIndex);
     }
   }, [searchParams]);
+
+  // 将浏览器标题与 videoTitle 绑定，totalEpisodes > 1 时追加集数
+  const totalEpisodesForTitle = detail?.episodes?.length || 0;
+  const episodeTitleForTitle =
+    totalEpisodesForTitle > 1
+      ? `${detail?.episodes_titles?.[currentEpisodeIndex] || `第 ${currentEpisodeIndex + 1} 集`}`
+      : '';
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const base = videoTitle || '影片标题';
+    document.title = episodeTitleForTitle
+      ? `${base} > ${episodeTitleForTitle}`
+      : base;
+  }, [videoTitle, episodeTitleForTitle]);
 
   // 重新加载触发器（用于触发 initAll 重新执行）
   const [reloadTrigger, setReloadTrigger] = useState(0);
