@@ -5107,6 +5107,8 @@ function PlayPageClient() {
                         filterAds: true,
                         enableDirectConnect: false,
                         sourceKey: '',
+                        customAdFilterCode: customAdFilterCodeRef.current,
+                        currentSource: currentSourceRef.current,
                       });
                     }
                   }
