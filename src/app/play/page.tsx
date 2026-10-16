@@ -7,7 +7,8 @@
 import Hls from 'hls.js';
 import { X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 
@@ -21,12 +22,13 @@ import {
   generateStorageKey,
   getAllFavorites,
   getAllPlayRecords,
+  saveobj,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { normalizeDownloadSource } from '@/lib/download';
 import OptimizedHlsLoader from '@/lib/hls-loader';
 import { SearchResult } from '@/lib/types';
-import { applyFirstPartyM3u8Proxy, applyVideoPlayProxy, getArtPlayerType, getVideoResolutionFromM3u8, isFirstPartyM3u8Proxy, stripVideoPlayProxy, VideoSourceTestResult } from '@/lib/utils';
+import { applyFirstPartyM3u8Proxy, applyVideoPlayProxy, getArtPlayerType, getVideoResolutionFromM3u8, isFirstPartyM3u8Proxy, processImageUrl, stripVideoPlayProxy, VideoSourceTestResult } from '@/lib/utils';
 import type { DanmuManualOverride } from '@/hooks/useDanmu';
 import { useDanmu } from '@/hooks/useDanmu';
 
@@ -67,6 +69,7 @@ import {
 import {
   useDoubanCommentsQuery,
   useDoubanDetailsQuery,
+  useTMDBBackdropQuery,
 } from './hooks/usePlayPageQueries';
 import { useWatchRoomSync } from './hooks/useWatchRoomSync';
 

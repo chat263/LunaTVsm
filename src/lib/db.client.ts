@@ -26,6 +26,8 @@ export type { EpisodeSkipConfig,PlayRecord, SkipSegment } from './types';
 const saveobj = {curtime:0};
 const saveobj1 = {curtime:0};
 
+export { saveobj, saveobj1 };
+
 // 全局错误触发函数
 function triggerGlobalError(message: string) {
   if (typeof window !== 'undefined') {
