@@ -1,18 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps, no-console */
+/* eslint-disable react-hooks/exhaustive-deps, no-console */
 
 'use client';
 
+import { infiniteQueryOptions, useInfiniteQuery } from '@tanstack/react-query';
 import { ChevronUp, Filter, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useInfiniteQuery, infiniteQueryOptions } from '@tanstack/react-query';
 
 import {
   getShortDramaCategories,
   getShortDramaList,
-  searchShortDramas,
 } from '@/lib/shortdrama.client';
 import { cleanExpiredCache } from '@/lib/shortdrama-cache';
-import { ShortDramaCategory, ShortDramaItem } from '@/lib/types';
+import { ShortDramaCategory } from '@/lib/types';
 
 import PageLayout from '@/components/PageLayout';
 import ShortDramaCard from '@/components/ShortDramaCard';
@@ -21,17 +20,11 @@ import VirtualGrid from '@/components/VirtualGrid';
 const PAGE_SIZE = 20;
 
 // Query Options 工厂函数
-const shortDramaListOptions = (
-  selectedCategory: number | null,
-  searchQuery: string,
-  isSearchMode: boolean,
-) =>
+// 注意：上游 API 不支持搜索，搜索只在已加载的数据里本地过滤，不参与 queryKey
+const shortDramaListOptions = (selectedCategory: number | null) =>
   infiniteQueryOptions({
-    queryKey: ['shortdramas', selectedCategory, searchQuery, isSearchMode],
+    queryKey: ['shortdramas', selectedCategory],
     queryFn: async ({ pageParam = 1 }) => {
-      if (isSearchMode && searchQuery) {
-        return await searchShortDramas(searchQuery, pageParam, PAGE_SIZE);
-      }
       if (selectedCategory) {
         return await getShortDramaList(selectedCategory, pageParam, PAGE_SIZE);
       }
@@ -41,7 +34,7 @@ const shortDramaListOptions = (
     getNextPageParam: (lastPage, allPages) => {
       return lastPage.hasMore ? allPages.length + 1 : undefined;
     },
-    enabled: !!selectedCategory || isSearchMode,
+    enabled: !!selectedCategory,
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
   });
@@ -49,16 +42,8 @@ const shortDramaListOptions = (
 export default function ShortDramaPage() {
   const [categories, setCategories] = useState<ShortDramaCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null); // 等分类加载后自动选中第一个
-  const [dramas, setDramas] = useState<ShortDramaItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchMode, setIsSearchMode] = useState(false);
-  // 返回顶部按钮显示状态
   const [showBackToTop, setShowBackToTop] = useState(false);
-  // 用于防止分类切换时的闪烁
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   // 虚拟化开关状态
   const [useVirtualization, setUseVirtualization] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -69,22 +54,25 @@ export default function ShortDramaPage() {
   });
 
   // 使用 useInfiniteQuery 替代手动状态管理
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-  } = useInfiniteQuery(
-    shortDramaListOptions(selectedCategory, searchQuery, isSearchMode),
-  );
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useInfiniteQuery(shortDramaListOptions(selectedCategory));
 
   // 扁平化所有页面的数据
   const allDramas = useMemo(
     () => data?.pages.flatMap((page) => page.list) ?? [],
     [data],
   );
+
+  // 本地搜索：只在当前分类已加载的数据里按名称过滤
+  const trimmedQuery = searchQuery.trim();
+  const isSearchMode = trimmedQuery.length > 0;
+  const filteredDramas = useMemo(() => {
+    if (!isSearchMode) return allDramas;
+    const keyword = trimmedQuery.toLowerCase();
+    return allDramas.filter((drama) =>
+      drama.name?.toLowerCase().includes(keyword),
+    );
+  }, [allDramas, isSearchMode, trimmedQuery]);
 
   // 加载完成后如果当前分类是空的，自动跳到下一个有内容的分类
   useEffect(() => {
@@ -111,16 +99,25 @@ export default function ShortDramaPage() {
     (node: HTMLDivElement) => {
       // 虚拟化模式使用 endReached 回调，不需要 IntersectionObserver
       if (useVirtualization) return;
-      if (loading) return;
+      if (isLoading) return;
       if (observer.current) observer.current.disconnect();
+      // 搜索时不自动翻页，由用户点击"加载更多"
+      if (isSearchMode) return;
       observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          setPage((prevPage) => prevPage + 1);
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
         }
       });
       if (node) observer.current.observe(node);
     },
-    [loading, hasMore, useVirtualization],
+    [
+      isLoading,
+      hasNextPage,
+      isFetchingNextPage,
+      useVirtualization,
+      fetchNextPage,
+      isSearchMode,
+    ],
   );
 
   // 获取分类列表
@@ -176,66 +173,9 @@ export default function ShortDramaPage() {
     };
   }, []);
 
-  // 加载短剧列表
-  const loadDramas = useCallback(
-    async (pageNum: number, reset = false) => {
-      if (!selectedCategory && !isSearchMode) return; // 没有选中分类且不是搜索模式时不加载
-
-      setLoading(true);
-      try {
-        let result: { list: ShortDramaItem[]; hasMore: boolean };
-        if (isSearchMode && searchQuery) {
-          result = await searchShortDramas(searchQuery, pageNum, 20);
-        } else {
-          result = await getShortDramaList(selectedCategory!, pageNum, 20);
-        }
-
-        if (reset) {
-          setDramas(result.list);
-          setIsInitialLoad(false);
-        } else {
-          setDramas((prev) => [...prev, ...result.list]);
-        }
-        setHasMore(result.hasMore);
-      } catch (error) {
-        console.error('加载短剧失败:', error);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [selectedCategory, searchQuery, isSearchMode],
-  );
-
-  // 当分类变化时重新加载
-  useEffect(() => {
-    if (selectedCategory && !isSearchMode) {
-      setPage(1);
-      setHasMore(true);
-      loadDramas(1, true);
-    }
-  }, [selectedCategory, isSearchMode, loadDramas]);
-
-  // 当页码变化时加载更多
-  useEffect(() => {
-    if (page > 1) {
-      loadDramas(page, false);
-    }
-  }, [page, loadDramas]);
-
   // 处理搜索
-  const handleSearch = useCallback(async (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    setIsSearchMode(!!query);
-    setPage(1);
-    setHasMore(true);
-
-    if (query) {
-      const result = await searchShortDramas(query, 1, 20);
-      setDramas(result.list);
-      setHasMore(result.hasMore);
-    }
-    // 如果清空搜索，不需要手动调用 loadDramas
-    // useEffect 会自动监听 isSearchMode 的变化并重新加载
   }, []);
 
   // 返回顶部功能
@@ -246,8 +186,7 @@ export default function ShortDramaPage() {
         top: 0,
         behavior: 'smooth',
       });
-    } catch (error) {
-      // 如果平滑滚动完全失败，使用立即滚动
+    } catch {
       document.body.scrollTop = 0;
     }
   };
@@ -292,7 +231,7 @@ export default function ShortDramaPage() {
           </div>
 
           {/* 分类筛选 */}
-          {!isSearchMode && categories.length > 0 && (
+          {categories.length > 0 && (
             <div className='mb-6'>
               <div className='flex items-center space-x-2.5 mb-4'>
                 <div className='w-9 h-9 rounded-xl bg-linear-to-br from-purple-500 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30'>
@@ -364,27 +303,32 @@ export default function ShortDramaPage() {
           {/* 短剧网格 */}
           {useVirtualization ? (
             <VirtualGrid
-              items={dramas}
+              items={filteredDramas}
               className='grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
               rowGapClass='pb-4'
               estimateRowHeight={280}
               endReached={() => {
-                if (hasMore && !loading) {
-                  setPage((prevPage) => prevPage + 1);
+                // 搜索时不自动翻页，由用户点击"加载更多"
+                if (!isSearchMode && hasNextPage && !isFetchingNextPage) {
+                  fetchNextPage();
                 }
               }}
               endReachedThreshold={3}
-              restoreKey={`shortdrama:${isSearchMode ? `search:${searchQuery.trim()}` : `cat:${selectedCategory ?? ''}`}`}
+              restoreKey={`shortdrama:cat:${selectedCategory ?? ''}${isSearchMode ? `:search:${trimmedQuery}` : ''}`}
               renderItem={(drama, index) => (
                 <ShortDramaCard drama={drama} priority={index < 30} />
               )}
             />
           ) : (
             <div className='grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'>
-              {dramas.map((drama, index) => (
+              {filteredDramas.map((drama, index) => (
                 <div
                   key={`${drama.id}-${index}`}
-                  ref={index === dramas.length - 1 ? lastDramaElementRef : null}
+                  ref={
+                    index === filteredDramas.length - 1
+                      ? lastDramaElementRef
+                      : null
+                  }
                 >
                   <ShortDramaCard drama={drama} />
                 </div>
@@ -392,8 +336,8 @@ export default function ShortDramaPage() {
             </div>
           )}
 
-          {/* 加载状态 - 只在首次加载或加载更多时显示骨架屏 */}
-          {loading && (isInitialLoad || page > 1) && (
+          {/* 加载状态 */}
+          {(isLoading || isFetchingNextPage) && (
             <div className='mt-8'>
               <div className='flex justify-center mb-6'>
                 <div className='flex items-center gap-3 px-6 py-3 bg-linear-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200/50 dark:border-purple-700/50 shadow-md'>
@@ -421,8 +365,25 @@ export default function ShortDramaPage() {
             </div>
           )}
 
+          {/* 搜索范围提示：仅搜索已加载内容，可手动加载更多 */}
+          {isSearchMode && !isLoading && hasNextPage && (
+            <div className='flex flex-col items-center gap-3 mt-6 text-center'>
+              <p className='text-xs sm:text-sm text-gray-600 dark:text-gray-400'>
+                仅搜索当前分类已加载的 {allDramas.length}{' '}
+                部短剧，找不到可以加载更多后再搜
+              </p>
+              <button
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className='px-5 py-2 rounded-lg text-sm font-medium bg-linear-to-r from-purple-500 to-pink-500 text-white shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300'
+              >
+                {isFetchingNextPage ? '加载中...' : '加载更多'}
+              </button>
+            </div>
+          )}
+
           {/* 无更多数据提示 */}
-          {!loading && !hasMore && dramas.length > 0 && (
+          {!isLoading && !hasNextPage && filteredDramas.length > 0 && (
             <div className='flex justify-center mt-12 py-8'>
               <div className='relative px-8 py-5 rounded-2xl bg-linear-to-r from-purple-50 via-pink-50 to-rose-50 dark:from-purple-900/20 dark:via-pink-900/20 dark:to-rose-900/20 border border-purple-200/50 dark:border-purple-700/50 shadow-lg backdrop-blur-sm overflow-hidden'>
                 {/* 装饰性背景 */}
@@ -457,7 +418,7 @@ export default function ShortDramaPage() {
                       已经到底了～
                     </p>
                     <p className='text-xs text-gray-600 dark:text-gray-400'>
-                      共 {dramas.length} 部短剧
+                      共 {filteredDramas.length} 部短剧
                     </p>
                   </div>
                 </div>
@@ -466,7 +427,7 @@ export default function ShortDramaPage() {
           )}
 
           {/* 无搜索结果 */}
-          {!loading && dramas.length === 0 && isSearchMode && (
+          {!isLoading && filteredDramas.length === 0 && isSearchMode && (
             <div className='flex justify-center py-16'>
               <div className='relative px-12 py-10 rounded-3xl bg-linear-to-br from-gray-50 via-slate-50 to-gray-100 dark:from-gray-800/40 dark:via-slate-800/40 dark:to-gray-800/50 border border-gray-200/50 dark:border-gray-700/50 shadow-xl backdrop-blur-sm overflow-hidden max-w-md'>
                 {/* 装饰性元素 */}
@@ -503,7 +464,9 @@ export default function ShortDramaPage() {
                       没有找到相关短剧
                     </h3>
                     <p className='text-sm text-gray-600 dark:text-gray-400 max-w-xs'>
-                      换个关键词试试，或者浏览其他分类
+                      {hasNextPage
+                        ? '当前分类已加载的内容里没有匹配项，可以加载更多、换个关键词或切换分类'
+                        : '换个关键词试试，或者切换其他分类'}
                     </p>
                   </div>
 
